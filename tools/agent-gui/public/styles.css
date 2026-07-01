@@ -182,16 +182,20 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 100%;
   min-width: 0;
   pointer-events: none;
   user-select: none;
-  font-size: 11px;
+  font-size: calc((100vh - 20px) / var(--brand-chars, 6));
   font-weight: 600;
-  letter-spacing: 0.32em;
+  line-height: 1;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-faint);
-  opacity: 0.42;
+  opacity: 0.38;
   writing-mode: vertical-rl;
+  text-orientation: mixed;
+  white-space: nowrap;
 }
 
 .brand-edge--left { transform: rotate(180deg); }
@@ -221,8 +225,8 @@ body {
 
 .sidebar-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--rail-border);
@@ -237,8 +241,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  flex: 1;
-  min-width: 0;
 }
 
 .btn--sidebar-new {
