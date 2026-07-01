@@ -110,7 +110,28 @@
         </section>
 
         <footer class="bottombar">
-          <span id="cli-info">—</span>
+          <div class="agent-settings">
+            <label class="agent-settings-field">
+              <span class="agent-settings-label">Provider</span>
+              <select id="agent-backend" class="input input--compact" disabled>
+                <option value="cursor">Cursor</option>
+                <option value="claude">Claude</option>
+              </select>
+            </label>
+            <label class="agent-settings-field agent-settings-field--model">
+              <span class="agent-settings-label">Model</span>
+              <input
+                id="agent-model"
+                type="text"
+                class="input input--compact input--model"
+                list="agent-model-presets"
+                placeholder="model id"
+                spellcheck="false"
+                disabled
+              />
+              <datalist id="agent-model-presets"></datalist>
+            </label>
+          </div>
         </footer>
       </div>
     </div>

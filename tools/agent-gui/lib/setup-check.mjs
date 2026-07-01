@@ -1,7 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { resolveAgentBackend } from './agent-settings.mjs';
 import { isValidRepo, loopDir } from './repo-utils.mjs';
 import { resolveAgentScriptForRepo } from './agent-scripts.mjs';
 
@@ -23,22 +24,6 @@ function runCommand(cmd, args, cwd) {
     child.on('close', (code) => resolveRun({ code: code ?? 1, out: out.trim() }));
     child.on('error', () => resolveRun({ code: 127, out: '' }));
   });
-}
-
-/** @param {string | null} repoRoot */
-export function resolveAgentBackend(repoRoot) {
-  const fromEnv = (process.env.AGENT_BACKEND ?? 'cursor').toLowerCase();
-  if (!repoRoot) return fromEnv === 'claude' ? 'claude' : 'cursor';
-  const backendPath = join(loopDir(resolve(repoRoot)), 'backend');
-  if (existsSync(backendPath)) {
-    try {
-      const line = readFileSync(backendPath, 'utf8').trim().toLowerCase();
-      if (line === 'claude' || line === 'cursor') return line;
-    } catch {
-      /* ignore */
-    }
-  }
-  return fromEnv === 'claude' ? 'claude' : 'cursor';
 }
 
 /** @param {string | null} repoRoot @param {'cursor' | 'claude'} backend */

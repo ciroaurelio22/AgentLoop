@@ -21,10 +21,10 @@ import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
 import { runSetupChecks } from './lib/setup-check.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
 import { detectPackageManager, resolveAgentScriptForRepo } from './lib/agent-scripts.mjs';
+import { readAgentSettings, writeAgentSettings } from './lib/agent-settings.mjs';
 import {
   DEFAULT_PORT,
   TASK_ID_RE,
-  defaultAgentModel,
   isValidRepo,
   loadConfig,
   loopDir,
@@ -154,13 +154,15 @@ function writeDraftPrompt({ taskId, title, taskRel, description, currentProgram 
 
 function getState() {
   const autostartPath = repoRoot ? join(loopDir(repoRoot), 'autostart') : null;
+  const agent = readAgentSettings(repoRoot);
   return {
     repo: repoRoot,
     repoValid: repoRoot ? isValidRepo(repoRoot) : false,
     nextTaskId: repoRoot ? nextTaskId(repoRoot) : 'TASK-001',
     autostart: autostartPath ? existsSync(autostartPath) : false,
-    model: defaultAgentModel(),
-    agentBackend: (process.env.AGENT_BACKEND ?? 'cursor').toLowerCase(),
+    agentBackend: agent.backend,
+    model: agent.model,
+    modelPresets: agent.presets,
     agentRunning: activeAgent !== null && activeAgent.exitCode === null,
   };
 }
@@ -189,6 +191,40 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && url.pathname === '/api/state') {
     ensureRepo();
     return sendJson(res, 200, getState());
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/agent/settings') {
+    const root = ensureRepo();
+    if (!root) {
+      return sendJson(res, 400, { error: 'Select a valid workspace' });
+    }
+    return sendJson(res, 200, readAgentSettings(root));
+  }
+
+  if (req.method === 'PUT' && url.pathname === '/api/agent/settings') {
+    const root = ensureRepo();
+    if (!root) {
+      return sendJson(res, 400, { error: 'Select a valid workspace' });
+    }
+    try {
+      const body = await readBody(req);
+      const backend = body.backend !== undefined ? String(body.backend).trim().toLowerCase() : undefined;
+      if (backend !== undefined && backend !== 'cursor' && backend !== 'claude') {
+        return sendJson(res, 400, { error: 'Provider must be cursor or claude' });
+      }
+      const model = body.model !== undefined ? String(body.model).trim() : undefined;
+      if (model !== undefined && !model) {
+        return sendJson(res, 400, { error: 'Model cannot be empty' });
+      }
+      const settings = writeAgentSettings(root, {
+        backend,
+        model,
+        resetModelOnBackendChange: Boolean(body.resetModelOnBackendChange),
+      });
+      return sendJson(res, 200, settings);
+    } catch {
+      return sendJson(res, 400, { error: 'Body JSON non valido' });
+    }
   }
 
   if (req.method === 'POST' && url.pathname === '/api/repo') {
@@ -475,16 +511,16 @@ async function handleApi(req, res, url) {
     });
 
     const script = resolveAgentScriptForRepo(repoRoot, 'run-agent.mjs');
-    const backend = (process.env.AGENT_BACKEND ?? 'cursor').toLowerCase();
+    const agentSettings = readAgentSettings(repoRoot);
     const args = [
       '--workspace',
       repoRoot,
       '--task',
       taskRel,
       '--model',
-      defaultAgentModel(),
+      agentSettings.model,
       '--backend',
-      backend,
+      agentSettings.backend,
     ];
 
     const sendEvent = (event, data) => {

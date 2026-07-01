@@ -74,10 +74,3 @@ export function resolveStartupRepo(fallback) {
   if (fallback && isValidRepo(fallback)) return resolve(fallback);
   return null;
 }
-
-export function defaultAgentModel() {
-  const backend = (process.env.AGENT_BACKEND ?? 'cursor').toLowerCase();
-  return backend === 'claude'
-    ? (process.env.AGENT_MODEL ?? 'claude-sonnet-4-6')
-    : (process.env.AGENT_MODEL ?? 'composer-2.5-fast');
-}

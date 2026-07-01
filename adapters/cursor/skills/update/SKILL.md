@@ -25,7 +25,7 @@ node scripts/agent/update.mjs --target .
 The script:
 
 1. Clones or `git pull`s the kit into `%TEMP%/agent-loop-kit` (or `$TMPDIR/agent-loop-kit`)
-2. Runs `bin/install.mjs --target . --all --force` from that fresh copy
+2. Runs `bin/install.mjs --target . --all --force --updated` from that fresh copy
 
 Optional flags:
 
@@ -33,6 +33,29 @@ Optional flags:
 node scripts/agent/update.mjs --target . --branch master
 node scripts/agent/update.mjs --target . --kit-dir "C:/path/to/cache"
 ```
+
+## Restart Agent Console (required)
+
+After every update, **restart the web UI**. The kit replaces files on disk (`tools/agent-gui/`, scripts, hooks), but a server already listening on port **9477** keeps the **old code in memory**. `pnpm agent:gui:ensure` alone does **not** restart a healthy running instance.
+
+1. **Stop** the current Agent Console:
+   - Close the terminal that runs `pnpm agent:gui`, **or**
+   - Kill the PID stored in `.agent-loop/gui.pid` (Windows: `taskkill /F /PID <pid>`, Unix: `kill <pid>`)
+2. **Start** it again:
+
+```bash
+pnpm agent:gui:ensure
+```
+
+Or open it manually:
+
+```bash
+pnpm agent:gui
+```
+
+3. **Reload** the browser tab at `http://127.0.0.1:9477` (hard refresh if needed).
+
+Always tell the user to restart Agent Console after an update completes.
 
 ## Preserved user data
 
@@ -47,10 +70,11 @@ The installer does **not** overwrite:
 
 ```bash
 pnpm agent:status
+# restart Agent Console (see above), then:
 pnpm agent:gui:ensure
 ```
 
-Report what changed (scripts, hooks, GUI, skills) and confirm queue/tasks are intact.
+Report what changed (scripts, hooks, GUI, skills), confirm queue/tasks are intact, and remind the user to **reload the browser** after the GUI restart.
 
 ## Constraints
 

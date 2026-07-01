@@ -17,6 +17,7 @@ Opens the browser at `http://127.0.0.1:9477`.
 - **Sidebar** — task queue; status badge + linked PR when `gh` is available
 - **Activity** — last 3 agent actions (read, write, tools, status)
 - **Program** — live-synced editor; updates when the agent modifies the file on disk
+- **Footer** — provider (Cursor / Claude) and model; persisted in `.agent-loop/backend` and `.agent-loop/model`
 
 ## Requirements
 

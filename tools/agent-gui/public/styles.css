@@ -704,11 +704,62 @@ body {
 
 .bottombar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
+  gap: 12px;
   color: var(--text-faint);
   font-size: 11px;
   padding: 0 2px;
+}
+
+.agent-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  width: 100%;
+}
+
+.agent-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.agent-settings-field--model {
+  flex: 1 1 220px;
+  max-width: 360px;
+}
+
+.agent-settings-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.input--compact {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.input--model {
+  width: 100%;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+.agent-settings-field select.input--compact {
+  min-width: 108px;
+  cursor: pointer;
+}
+
+.agent-settings-field select.input--compact:disabled,
+.agent-settings-field input.input--compact:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .menu {

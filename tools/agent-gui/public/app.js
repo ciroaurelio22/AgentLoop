@@ -19,7 +19,9 @@ const els = {
   btnProgramAi: $('#btn-program-ai'),
   btnMore: $('#btn-more'),
   moreMenu: $('#more-menu'),
-  cliInfo: $('#cli-info'),
+  agentBackend: $('#agent-backend'),
+  agentModel: $('#agent-model'),
+  agentModelPresets: $('#agent-model-presets'),
   taskList: $('#task-list'),
   btnSidebarNew: $('#btn-sidebar-new'),
   activityFeed: $('#activity-feed'),
@@ -43,6 +45,8 @@ const state = {
   descResolve: null,
   diskContent: '',
   dirty: false,
+  agentSettingsReady: false,
+  savingAgentSettings: false,
 };
 
 let toastTimer = null;
@@ -109,6 +113,7 @@ function setBusy(busy) {
   els.btnCreate.disabled = busy;
   els.btnProgramAi.disabled = busy;
   els.btnSidebarNew.disabled = busy;
+  setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !busy);
 }
 
 function setCreateVisible(show) {
@@ -404,12 +409,57 @@ function connectProgramWatch(taskId) {
   };
 }
 
+function setAgentSettingsEnabled(enabled) {
+  els.agentBackend.disabled = !enabled || state.agentRunning;
+  els.agentModel.disabled = !enabled || state.agentRunning;
+}
+
+function renderModelPresets(presets = []) {
+  els.agentModelPresets.innerHTML = presets
+    .map((model) => `<option value="${escapeHtml(model)}"></option>`)
+    .join('');
+}
+
+function applyAgentSettings(data) {
+  if (!data) return;
+  state.agentSettingsReady = Boolean(data.repoValid ?? data.backend);
+  els.agentBackend.value = data.agentBackend ?? data.backend ?? 'cursor';
+  els.agentModel.value = data.model ?? '';
+  renderModelPresets(data.modelPresets ?? data.presets ?? []);
+  setAgentSettingsEnabled(Boolean(data.repoValid ?? data.repo));
+}
+
+async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChange = false } = {}) {
+  if (state.savingAgentSettings || state.agentRunning) return null;
+  state.savingAgentSettings = true;
+  try {
+    const data = await api('/api/agent/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ ...patch, resetModelOnBackendChange }),
+    });
+    applyAgentSettings({
+      repoValid: true,
+      agentBackend: data.backend,
+      model: data.model,
+      modelPresets: data.presets,
+    });
+    if (!quiet) toast('Agent settings saved', 'success');
+    await refreshSetup();
+    return data;
+  } catch (err) {
+    toast(err.message, 'error');
+    return null;
+  } finally {
+    state.savingAgentSettings = false;
+  }
+}
+
 async function refreshState() {
   const data = await api('/api/state');
   if (data.repo) els.repoPath.value = data.repo;
   state.taskId = data.nextTaskId;
   els.taskId.textContent = data.nextTaskId;
-  els.cliInfo.textContent = data.model ?? '—';
+  applyAgentSettings(data);
   if (data.agentRunning) {
     setBusy(true);
     setStatus('Running', 'running');
@@ -790,6 +840,38 @@ function bindEvents() {
     if (e.ctrlKey && e.key === 'Enter') {
       e.preventDefault();
       els.descForm.requestSubmit();
+    }
+  });
+
+  els.agentBackend.addEventListener('change', () => {
+    void (async () => {
+      const backend = els.agentBackend.value;
+      const data = await saveAgentSettings(
+        { backend },
+        { quiet: true, resetModelOnBackendChange: true },
+      );
+      if (data) {
+        toast(`Provider: ${backend === 'claude' ? 'Claude' : 'Cursor'}`, 'success');
+      }
+    })();
+  });
+
+  els.agentModel.addEventListener('change', () => {
+    const model = els.agentModel.value.trim();
+    if (!model) return;
+    void saveAgentSettings({ model }, { quiet: true });
+  });
+
+  els.agentModel.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const model = els.agentModel.value.trim();
+      if (!model) {
+        toast('Enter a model id', 'warning');
+        return;
+      }
+      void saveAgentSettings({ model }, { quiet: true });
+      els.agentModel.blur();
     }
   });
 }
