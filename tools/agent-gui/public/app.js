@@ -1246,14 +1246,16 @@ function bindEvents() {
 }
 
 async function init() {
-  activityFeed = new ActivityFeed(els.activityFeed);
-  taskSidebar = new TaskSidebar(els.taskList, {
-    onSelect: (id) => void loadTask(id),
-    onDelete: (id) => void deleteTask(id),
-  });
-  bindEvents();
-  renderProgramPreview('');
+  setBootMessage('Avvio Agent Console…');
   try {
+    activityFeed = new ActivityFeed(els.activityFeed);
+    taskSidebar = new TaskSidebar(els.taskList, {
+      onSelect: (id) => void loadTask(id),
+      onDelete: (id) => void deleteTask(id),
+    });
+    bindEvents();
+    renderProgramPreview('');
+
     connectTasksWatch();
 
     const stateData = await bootStep('Caricamento workspace e impostazioni…', () =>
@@ -1287,10 +1289,11 @@ async function init() {
     if (!getRepoPath() && els.setupRepoPath) {
       els.setupRepoPath.focus();
     }
-  } catch {
-    setBootMessage('Impossibile connettersi al server');
+  } catch (err) {
+    console.error(err);
+    setBootMessage('Impossibile avviare Agent Console');
     await new Promise((resolve) => setTimeout(resolve, 700));
-    toast('Cannot reach local server', 'error');
+    toast(err instanceof Error ? err.message : 'Cannot reach local server', 'error');
   } finally {
     hideBootLoader();
   }

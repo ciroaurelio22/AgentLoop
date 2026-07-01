@@ -48,6 +48,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
 };
@@ -688,6 +689,10 @@ function serveStatic(req, res, url) {
     return;
   }
   if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+    if (/\.(js|mjs|css|svg|ico|woff2?)$/i.test(url.pathname)) {
+      sendJson(res, 404, { error: 'Not found' });
+      return;
+    }
     filePath = join(PUBLIC_DIR, 'index.html');
   }
   const ext = extname(filePath);
@@ -722,20 +727,21 @@ function openBrowser(url) {
 function main() {
   const port = Number(process.env.AGENT_GUI_PORT) || DEFAULT_PORT;
   guiPort = port;
-  const server = createAppServer();
   ensureRepo();
-  void Promise.all([warmProviderStatus(repoRoot), warmCatalog(repoRoot ?? process.cwd())]).then(
+  const server = createAppServer();
+  server.listen(port, '127.0.0.1', () => {
+    writeGuiPid();
+    const url = `http://127.0.0.1:${port}`;
+    console.log(`Agent Console → ${url}`);
+    if (repoRoot) console.log(`Workspace: ${repoRoot}`);
+    else console.log('No workspace — set path in UI');
+    if (process.env.AGENT_GUI_NO_OPEN !== '1') {
+      openBrowser(url);
+    }
+  });
+  void Promise.all([warmProviderStatus(repoRoot), warmCatalog(repoRoot ?? process.cwd())]).catch(
     () => {
-      server.listen(port, '127.0.0.1', () => {
-        writeGuiPid();
-        const url = `http://127.0.0.1:${port}`;
-        console.log(`Agent Console → ${url}`);
-        if (repoRoot) console.log(`Workspace: ${repoRoot}`);
-        else console.log('No workspace — set path in UI');
-        if (process.env.AGENT_GUI_NO_OPEN !== '1') {
-          openBrowser(url);
-        }
-      });
+      /* warm is best-effort; UI still loads */
     },
   );
 }
