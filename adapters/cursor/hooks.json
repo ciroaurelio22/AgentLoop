@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{ "command": "node .cursor/hooks/agent-session-start.mjs" }],
+    "beforeShellExecution": [{ "command": "node .cursor/hooks/guard-shell.mjs" }],
+    "beforeReadFile": [{ "command": "node .cursor/hooks/redact-secrets.mjs" }],
+    "afterFileEdit": [{ "command": "node .cursor/hooks/lint-touched.mjs" }],
+    "stop": [{ "command": "node .cursor/hooks/agent-stop-loop.mjs", "loop_limit": 8 }]
+  }
+}

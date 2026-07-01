@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "defaults": {
+    "branchPrefix": "agent",
+    "branchSuffix": "",
+    "baseBranch": "main",
+    "verify": ["lint", "typecheck"]
+  },
+  "tasks": []
+}

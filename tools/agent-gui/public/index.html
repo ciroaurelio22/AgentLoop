@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-head">
+          <div class="sidebar-head-row">
+            <h2 class="sidebar-title">Tasks</h2>
+            <span class="sidebar-live">live</span>
+          </div>
+          <button type="button" id="btn-sidebar-new" class="btn btn--sidebar-new">+ New task</button>
+        </div>
+        <div id="task-list" class="task-list"></div>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <div class="topbar-left">
+            <h1 class="app-title">Agent Console</h1>
+          </div>
+          <div class="topbar-workspace">
+            <input
+              id="repo-path"
+              type="text"
+              class="input input--path"
+              placeholder="Workspace path…"
+              spellcheck="false"
+            />
+            <button type="button" id="btn-set-repo" class="btn btn--secondary">Apply</button>
+          </div>
+        </header>
+
+        <section class="controls">
+          <div class="controls-id" id="task-id">TASK-001</div>
+          <input
+            id="task-title"
+            type="text"
+            class="input input--title"
+            placeholder="Task title"
+          />
+          <div class="controls-actions">
+            <button
+              type="button"
+              id="btn-create"
+              class="btn btn--secondary"
+              title="Load task template into Program (preview, not saved)"
+            >
+              Create
+            </button>
+            <div class="menu">
+              <button type="button" id="btn-more" class="btn btn--secondary btn--icon" title="Actions">···</button>
+              <div id="more-menu" class="menu-panel hidden">
+                <button type="button" data-action="save">Save program</button>
+                <button type="button" data-action="verify">Verify acceptance</button>
+                <hr />
+                <button type="button" data-action="draft-ai">Complete with AI</button>
+                <button type="button" data-action="reload">Reload file</button>
+                <button type="button" data-action="new-id">New ID</button>
+                <hr />
+                <button type="button" data-action="stop-agent" class="menu-danger">Stop agent</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel panel--activity">
+          <div class="panel-head">
+            <h2 class="panel-title">Activity</h2>
+            <span class="panel-hint">Last 3 actions</span>
+          </div>
+          <div id="activity-feed" class="activity-feed">
+            <div class="activity-empty">No activity yet</div>
+          </div>
+        </section>
+
+        <section class="panel panel--program">
+          <div class="panel-head">
+            <h2 class="panel-title">Program</h2>
+            <div class="panel-meta">
+              <span id="program-file">—</span>
+              <span id="program-sync" class="sync-badge" data-state="idle">sync</span>
+            </div>
+          </div>
+          <div class="program-body">
+            <textarea
+              id="program-editor"
+              class="program-editor"
+              spellcheck="false"
+              placeholder="Program content will appear here…"
+            ></textarea>
+            <button
+              type="button"
+              id="btn-program-ai"
+              class="btn btn--ai btn--program-ai"
+              title="Create task on disk and start AI agent"
+            >
+              AI
+            </button>
+          </div>
+        </section>
+
+        <footer class="bottombar">
+          <span id="cli-info">—</span>
+          <button type="button" id="btn-stop" class="btn btn--danger" disabled>Stop agent</button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="autostart-gate" class="autostart-gate hidden" role="dialog" aria-modal="true" aria-labelledby="autostart-gate-title">
+      <div class="autostart-gate-card">
+        <h2 id="autostart-gate-title">Enable autostart</h2>
+        <p class="autostart-gate-lead">
+          Agent Console requires autostart before you can use it.
+        </p>
+        <p class="autostart-gate-detail">
+          This creates an empty file at
+          <code>.agent-loop/autostart</code>
+          in your workspace so Cursor can bootstrap the agent loop automatically.
+        </p>
+        <button type="button" id="btn-enable-autostart" class="btn btn--ai btn--gate">
+          Enable autostart
+        </button>
+      </div>
+    </div>
+
+    <dialog id="desc-dialog" class="modal modal--request">
+      <form method="dialog" id="desc-form">
+        <h2 id="desc-heading">AI request</h2>
+        <p id="desc-subtitle" class="modal-sub"></p>
+        <textarea
+          id="desc-text"
+          class="modal-textarea"
+          rows="8"
+          placeholder="Describe what the agent should do…"
+          required
+          minlength="20"
+        ></textarea>
+        <p class="modal-hint">Min. 20 characters · Ctrl+Enter to confirm</p>
+        <div class="modal-actions">
+          <button type="button" id="desc-cancel" class="btn btn--secondary">Cancel</button>
+          <button type="submit" id="desc-submit" class="btn btn--ai">Start agent</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

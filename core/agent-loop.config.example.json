@@ -1,0 +1,13 @@
+{
+  "loopDir": ".agent-loop",
+  "defaults": {
+    "branchPrefix": "agent",
+    "branchSuffix": "",
+    "baseBranch": "main"
+  },
+  "verify": {
+    "packageManager": "pnpm",
+    "mode": "root",
+    "packages": {}
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@synapsex/agent-loop",
+  "version": "0.1.0",
+  "description": "Karpathy-style agent loop: program per task, queue, verify, web console. Works with Cursor CLI and Claude Code.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agent-loop-install": "./bin/install.mjs"
+  },
+  "scripts": {
+    "install:demo": "node bin/install.mjs --target ./example --all --force"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
