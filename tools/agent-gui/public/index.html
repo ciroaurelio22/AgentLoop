@@ -75,16 +75,6 @@
           </div>
         </section>
 
-        <section class="panel panel--activity">
-          <div class="panel-head">
-            <h2 class="panel-title">Activity</h2>
-            <span class="panel-hint">Last 3 actions</span>
-          </div>
-          <div id="activity-feed" class="activity-feed">
-            <div class="activity-empty">No activity yet</div>
-          </div>
-        </section>
-
         <section class="panel panel--program">
           <div class="panel-head">
             <div class="panel-head-left">
@@ -151,6 +141,18 @@
           </div>
         </footer>
       </div>
+
+      <aside class="rail rail--activity" aria-label="Activity">
+        <section class="panel panel--activity">
+          <div class="panel-head">
+            <h2 class="panel-title">Activity</h2>
+            <span class="panel-hint">Recent actions</span>
+          </div>
+          <div id="activity-feed" class="activity-feed">
+            <div class="activity-empty">No activity yet</div>
+          </div>
+        </section>
+      </aside>
     </div>
 
     <div id="setup-gate" class="setup-gate hidden" role="dialog" aria-modal="true" aria-labelledby="setup-gate-title">

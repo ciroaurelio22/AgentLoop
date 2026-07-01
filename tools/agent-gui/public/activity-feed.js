@@ -1,6 +1,6 @@
-/** Ultime N azioni agent — pannello compatto. */
+/** Ultime N azioni agent — pannello verticale a destra. */
 
-const MAX = 3;
+const MAX = 8;
 
 function escapeHtml(str) {
   return String(str)

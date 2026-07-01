@@ -14,11 +14,10 @@ Opens the browser at `http://127.0.0.1:9477`.
 ## Layout
 
 - **Setup gate** — blocks the UI until workspace, autostart, and agent CLI are ready (`gh` is optional)
-- **Sidebar** — task queue; status badge + linked PR when `gh` is available
-- **Activity** — last 3 agent actions (read, write, tools, status)
-- **Program** — live-synced editor; updates when the agent modifies the file on disk. Header actions: **Save** (Ctrl+S), **Verify** (acceptance check), **Run AI** (start agent)
+- **Sidebar (left)** — task queue; status badge + linked PR when `gh` is available
+- **Center** — task composer (title + Create), Program editor with **Save** / **Verify** / **Run AI**, provider & model footer
+- **Activity (right rail)** — recent agent actions (tools, status, errors), scrollable
 - **More menu (···)** — Complete with AI, Reload file, New task
-- **Footer** — provider (Cursor / Claude / Codex) and model dropdown from the static catalog in `core/scripts/agent/lib/agent-model-catalog.mjs` (see doc links in that file)
 
 ### Keyboard shortcuts
 
