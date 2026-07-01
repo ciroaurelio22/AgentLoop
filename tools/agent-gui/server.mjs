@@ -21,7 +21,8 @@ import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
 import { runSetupChecks } from './lib/setup-check.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
 import { detectPackageManager, resolveAgentScriptForRepo } from './lib/agent-scripts.mjs';
-import { readAgentSettings, writeAgentSettings } from './lib/agent-settings.mjs';
+import { readAgentSettings, writeAgentSettings, resolveAgentBackend } from './lib/agent-settings.mjs';
+import { fetchAgentModels, invalidateAgentModelsCache } from './lib/agent-models.mjs';
 import {
   DEFAULT_PORT,
   TASK_ID_RE,
@@ -162,7 +163,6 @@ function getState() {
     autostart: autostartPath ? existsSync(autostartPath) : false,
     agentBackend: agent.backend,
     model: agent.model,
-    modelPresets: agent.presets,
     agentRunning: activeAgent !== null && activeAgent.exitCode === null,
   };
 }
@@ -201,6 +201,27 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, readAgentSettings(root));
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/agent/models') {
+    const root = ensureRepo();
+    if (!root) {
+      return sendJson(res, 400, { error: 'Select a valid workspace' });
+    }
+    const refresh = url.searchParams.get('refresh') === '1';
+    const backendParam = String(url.searchParams.get('backend') ?? '').trim().toLowerCase();
+    const backend =
+      backendParam === 'claude' || backendParam === 'cursor'
+        ? backendParam
+        : resolveAgentBackend(root);
+    try {
+      const listed = await fetchAgentModels(root, { refresh, backend });
+      return sendJson(res, 200, listed);
+    } catch (err) {
+      return sendJson(res, 500, {
+        error: err instanceof Error ? err.message : 'Could not list models',
+      });
+    }
+  }
+
   if (req.method === 'PUT' && url.pathname === '/api/agent/settings') {
     const root = ensureRepo();
     if (!root) {
@@ -221,6 +242,7 @@ async function handleApi(req, res, url) {
         model,
         resetModelOnBackendChange: Boolean(body.resetModelOnBackendChange),
       });
+      invalidateAgentModelsCache(root);
       return sendJson(res, 200, settings);
     } catch {
       return sendJson(res, 400, { error: 'Body JSON non valido' });

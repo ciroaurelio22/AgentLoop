@@ -21,7 +21,6 @@ const els = {
   moreMenu: $('#more-menu'),
   agentBackend: $('#agent-backend'),
   agentModel: $('#agent-model'),
-  agentModelPresets: $('#agent-model-presets'),
   taskList: $('#task-list'),
   btnSidebarNew: $('#btn-sidebar-new'),
   activityFeed: $('#activity-feed'),
@@ -47,6 +46,8 @@ const state = {
   dirty: false,
   agentSettingsReady: false,
   savingAgentSettings: false,
+  loadingAgentModels: false,
+  selectedModel: '',
 };
 
 let toastTimer = null;
@@ -410,22 +411,89 @@ function connectProgramWatch(taskId) {
 }
 
 function setAgentSettingsEnabled(enabled) {
-  els.agentBackend.disabled = !enabled || state.agentRunning;
-  els.agentModel.disabled = !enabled || state.agentRunning;
+  els.agentBackend.disabled = !enabled || state.agentRunning || state.loadingAgentModels;
+  els.agentModel.disabled = !enabled || state.agentRunning || state.loadingAgentModels;
 }
 
-function renderModelPresets(presets = []) {
-  els.agentModelPresets.innerHTML = presets
-    .map((model) => `<option value="${escapeHtml(model)}"></option>`)
+function renderModelSelect(models = [], selectedId = '', { loading = false, error = '' } = {}) {
+  if (loading) {
+    els.agentModel.innerHTML = '<option value="">Loading models…</option>';
+    els.agentModel.value = '';
+    return;
+  }
+
+  const seen = new Set();
+  /** @type {{ id: string; label: string }[]} */
+  const items = [];
+  for (const model of models) {
+    const id = String(model.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    items.push({ id, label: String(model.label ?? id).trim() || id });
+  }
+
+  if (selectedId && !seen.has(selectedId)) {
+    items.unshift({ id: selectedId, label: `${selectedId} (saved)` });
+  }
+
+  if (!items.length) {
+    const message = error || 'No models available';
+    els.agentModel.innerHTML = `<option value="">${escapeHtml(message)}</option>`;
+    els.agentModel.value = '';
+    return;
+  }
+
+  els.agentModel.innerHTML = items
+    .map(
+      (model) =>
+        `<option value="${escapeHtml(model.id)}">${escapeHtml(model.label)}</option>`,
+    )
     .join('');
+  els.agentModel.value = selectedId && [...els.agentModel.options].some((o) => o.value === selectedId)
+    ? selectedId
+    : items[0].id;
+}
+
+async function loadAgentModels({ refresh = false, backend, selectedModel } = {}) {
+  if (!els.repoPath.value.trim()) {
+    renderModelSelect([], '', { error: 'Select workspace first' });
+    return null;
+  }
+
+  state.loadingAgentModels = true;
+  setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !state.agentRunning);
+  renderModelSelect([], selectedModel ?? state.selectedModel, { loading: true });
+
+  try {
+    const params = new URLSearchParams();
+    if (refresh) params.set('refresh', '1');
+    if (backend) params.set('backend', backend);
+    const query = params.toString();
+    const data = await api(`/api/agent/models${query ? `?${query}` : ''}`);
+    const modelId = selectedModel ?? state.selectedModel ?? data.models?.[0]?.id ?? '';
+    state.selectedModel = modelId;
+    renderModelSelect(data.models ?? [], modelId, { error: data.error });
+    if (data.error && data.source === 'fallback') {
+      /* fallback list is expected for Claude until CLI adds model list */
+    } else if (data.error) {
+      toast(data.error, 'warning');
+    }
+    return data;
+  } catch (err) {
+    renderModelSelect([], selectedModel ?? state.selectedModel, { error: err.message });
+    toast(err.message, 'error');
+    return null;
+  } finally {
+    state.loadingAgentModels = false;
+    setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !state.agentRunning);
+  }
 }
 
 function applyAgentSettings(data) {
   if (!data) return;
   state.agentSettingsReady = Boolean(data.repoValid ?? data.backend);
   els.agentBackend.value = data.agentBackend ?? data.backend ?? 'cursor';
-  els.agentModel.value = data.model ?? '';
-  renderModelPresets(data.modelPresets ?? data.presets ?? []);
+  state.selectedModel = data.model ?? '';
   setAgentSettingsEnabled(Boolean(data.repoValid ?? data.repo));
 }
 
@@ -441,8 +509,9 @@ async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChan
       repoValid: true,
       agentBackend: data.backend,
       model: data.model,
-      modelPresets: data.presets,
     });
+    state.selectedModel = data.model;
+    await loadAgentModels({ refresh: true, backend: data.backend, selectedModel: data.model });
     if (!quiet) toast('Agent settings saved', 'success');
     await refreshSetup();
     return data;
@@ -460,6 +529,11 @@ async function refreshState() {
   state.taskId = data.nextTaskId;
   els.taskId.textContent = data.nextTaskId;
   applyAgentSettings(data);
+  if (data.repoValid) {
+    await loadAgentModels({ backend: data.agentBackend, selectedModel: data.model });
+  } else {
+    renderModelSelect([], '', { error: 'Select workspace first' });
+  }
   if (data.agentRunning) {
     setBusy(true);
     setStatus('Running', 'running');
@@ -611,6 +685,7 @@ async function applyWorkspaceFromGate() {
     return;
   }
   await refreshState();
+  await loadAgentModels({ refresh: true });
   connectTasksWatch();
   await loadTaskList();
   await refreshSetup();
@@ -776,6 +851,7 @@ function bindEvents() {
       return;
     }
     await refreshState();
+    await loadAgentModels({ refresh: true });
     connectTasksWatch();
     await loadTaskList();
     await refreshSetup();
@@ -859,20 +935,8 @@ function bindEvents() {
   els.agentModel.addEventListener('change', () => {
     const model = els.agentModel.value.trim();
     if (!model) return;
+    state.selectedModel = model;
     void saveAgentSettings({ model }, { quiet: true });
-  });
-
-  els.agentModel.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const model = els.agentModel.value.trim();
-      if (!model) {
-        toast('Enter a model id', 'warning');
-        return;
-      }
-      void saveAgentSettings({ model }, { quiet: true });
-      els.agentModel.blur();
-    }
   });
 }
 

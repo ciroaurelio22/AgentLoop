@@ -751,9 +751,15 @@ body {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
 }
 
-.agent-settings-field select.input--compact {
+.agent-settings-field select.input--compact,
+.agent-settings-field select.input--model {
   min-width: 108px;
+  max-width: 100%;
   cursor: pointer;
+}
+
+.agent-settings-field select.input--model {
+  min-width: 220px;
 }
 
 .agent-settings-field select.input--compact:disabled,

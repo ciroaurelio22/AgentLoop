@@ -120,16 +120,9 @@
             </label>
             <label class="agent-settings-field agent-settings-field--model">
               <span class="agent-settings-label">Model</span>
-              <input
-                id="agent-model"
-                type="text"
-                class="input input--compact input--model"
-                list="agent-model-presets"
-                placeholder="model id"
-                spellcheck="false"
-                disabled
-              />
-              <datalist id="agent-model-presets"></datalist>
+              <select id="agent-model" class="input input--compact input--model" disabled>
+                <option value="">Loading models…</option>
+              </select>
             </label>
           </div>
         </footer>

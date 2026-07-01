@@ -9,23 +9,6 @@ export const DEFAULT_MODEL = {
   claude: 'claude-sonnet-4-6',
 };
 
-export const MODEL_PRESETS = {
-  cursor: [
-    'composer-2.5-fast',
-    'claude-4.6-sonnet-medium-thinking',
-    'claude-opus-4-8-thinking-high',
-    'claude-sonnet-5-thinking-high',
-    'gpt-5.3-codex',
-    'gpt-5.5-medium',
-  ],
-  claude: [
-    'claude-sonnet-4-6',
-    'claude-opus-4-8',
-    'claude-sonnet-5-thinking-high',
-    'claude-opus-4-8-thinking-high',
-  ],
-};
-
 /** @param {string | null | undefined} repoRoot */
 export function resolveAgentBackend(repoRoot) {
   const fromEnv = (process.env.AGENT_BACKEND ?? 'cursor').toLowerCase();
@@ -68,7 +51,6 @@ export function readAgentSettings(repoRoot) {
   return {
     backend,
     model: resolveAgentModel(repoRoot, backend),
-    presets: MODEL_PRESETS[backend],
     defaults: DEFAULT_MODEL,
   };
 }
