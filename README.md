@@ -173,9 +173,24 @@ You are installing **Agent Loop** into this repository.
 
 ## Goal
 
-Add a Karpathy-style agent loop: one program file per task, a queue, automatic verify, optional web GUI. Must support **both** Cursor CLI (`agent`) and Claude Code CLI (`claude`).
+Add a Karpathy-style agent loop: one program file per task, a queue, automatic verify, optional web GUI. Configure the kit for the coding agent backend the user chooses (**Cursor CLI** or **Claude Code CLI**).
 
 ## Steps
+
+0. **Detect installed coding agent CLIs** (always do this first — before cloning or installing anything):
+   - Run both checks (exit code ≠ 0 is OK — it means not installed):
+     ```bash
+     agent --version
+     claude --version
+     ```
+   - Summarize for the user:
+     - **Cursor CLI** (`agent`): installed / not installed
+     - **Claude Code CLI** (`claude`): installed / not installed
+   - **Ask the user which backend to use** — do not guess:
+     - **Both installed** → ask explicitly: `cursor` or `claude`?
+     - **Only one installed** → propose that one and ask for confirmation; offer install link for the other if they prefer it
+     - **Neither installed** → ask which they want to use, share install links ([Cursor CLI](https://cursor.com/docs/cli/overview), [Claude Code](https://code.claude.com/docs/en/setup)), and wait until at least the chosen CLI is installed before continuing
+   - Record the choice as `AGENT_BACKEND=cursor` or `AGENT_BACKEND=claude` (document in README/AGENTS.md; optional file `.agent-loop/backend` with a single line `cursor` or `claude`).
 
 1. **Clone the kit** (if not already present) into a **writable temp folder for this OS** — do not hardcode `/tmp`:
    - Resolve a path, e.g. with Node (works everywhere):
@@ -191,9 +206,17 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
      - Windows PowerShell: `"$env:TEMP\agent-loop"`
 
 2. **Run the installer** from the target repo root (forward slashes in the Node path work on Windows too):
-   ```bash
-   node "<KIT_DIR>/bin/install.mjs" --target . --all
-   ```
+   - Use the backend chosen in step 0; always include `--gui`:
+     ```bash
+     # cursor
+     node "<KIT_DIR>/bin/install.mjs" --target . --cursor --gui
+
+     # claude
+     node "<KIT_DIR>/bin/install.mjs" --target . --claude --gui
+
+     # or both adapters if the user wants flexibility
+     node "<KIT_DIR>/bin/install.mjs" --target . --all
+     ```
 
 3. **Enable autostart** (required for Agent Console GUI + session hooks):
    ```bash
@@ -210,24 +233,15 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
    - Branch naming (`agent/{{BRANCH_SLUG}}` → PR on correct base branch).
    - Replace example verify commands with this repo's real commands.
 
-6. **Install a coding agent CLI** (do both if possible, report what succeeded):
-
-   **Cursor CLI**
-   ```bash
-   # Follow https://cursor.com/docs/cli/overview
-   agent --version || echo "Install Cursor CLI and run: agent login"
-   ```
-
-   **Claude Code CLI**
-   ```bash
-   # Follow https://code.claude.com/docs/en/setup
-   claude --version || echo "Install Claude Code CLI and authenticate"
-   ```
+6. **Install the chosen CLI** (if step 0 reported it missing):
+   - For **Cursor** (`AGENT_BACKEND=cursor`): follow [Cursor CLI docs](https://cursor.com/docs/cli/overview), then `agent login`
+   - For **Claude** (`AGENT_BACKEND=claude`): follow [Claude Code setup](https://code.claude.com/docs/en/setup), then authenticate
+   - Re-run `agent --version` or `claude --version` and confirm the chosen backend works before smoke tests.
 
 7. **Merge package.json scripts** — confirm these exist:
    - `agent:init`, `agent:next`, `agent:verify`, `agent:acceptance`, `agent:status`, `agent:gui`, `agent:gui:ensure`
 
-8. **Smoke test**:
+8. **Smoke test** (with the backend chosen in step 0):
    ```bash
    pnpm agent:init TASK-001 "Agent loop smoke test"
    pnpm agent:status
@@ -235,24 +249,26 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
    ```
 
 9. **Document for the team** — add a short "Agent loop" section to README or AGENTS.md with:
+   - Chosen backend and how to set `AGENT_BACKEND=cursor|claude` (GUI + `run-agent.mjs`)
    - How to create a task (`pnpm agent:init`)
    - How to start the agent (`pnpm agent:next` or GUI)
-   - `AGENT_BACKEND=cursor|claude` for the GUI
 
 ## Constraints
 
 - Do not merge autonomously.
 - Do not hardcode secrets.
 - Do not hardcode `/tmp` or other OS-specific paths — use `os.tmpdir()` or the shell temp variable for this machine.
+- Do not assume `cursor` or `claude` — always detect CLIs in step 0 and ask the user when needed.
 - Keep diffs minimal — only add agent-loop files and config.
 - If `lint` / `typecheck` / `test` scripts are missing at root, document what the user must add.
 
 ## Done when
 
+- [ ] Step 0 completed: CLIs detected and user chose `AGENT_BACKEND` (`cursor` or `claude`)
 - [ ] `.agent-loop/`, `scripts/agent/`, `specs/agent-tasks/` exist
 - [ ] `pnpm agent:status` runs without error
 - [ ] `agent-loop.config.json` matches this repo layout
-- [ ] At least one CLI (`agent` or `claude`) is installed or install instructions are documented
+- [ ] Chosen CLI (`agent` or `claude`) is installed and authenticated
 - [ ] Optional: `pnpm agent:gui` starts on port 9477
 ````
 ## Contributing
