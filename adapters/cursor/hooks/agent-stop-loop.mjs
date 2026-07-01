@@ -2,25 +2,37 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-import { emitEmpty, emitJson, readHookInput, repoRoot, resolveLoopDir } from './lib/hook-io.mjs';
+import {
+  emitEmpty,
+  emitJson,
+  readHookInput,
+  repoRoot,
+  resolveAgentScript,
+  resolveLoopDir,
+} from './lib/hook-io.mjs';
 
 const input = readHookInput();
 const status = input.status ?? 'completed';
 const loopCount = Number(input.loop_count ?? 0);
+const composerMode = input.composer_mode ?? '';
 
 const root = repoRoot();
 process.chdir(root);
 
-const scratchpad = join(resolveLoopDir(root), 'scratchpad.md');
+const loopDirPath = resolveLoopDir(root);
+const scratchpad = join(loopDirPath, 'scratchpad.md');
+const queuePath = join(loopDirPath, 'queue.json');
+const statePath = join(loopDirPath, 'state.json');
 const maxLoops = Number(process.env.AGENT_LOOP_LIMIT ?? 8);
 
-function runNode(args) {
-  return execFileSync('node', args, { cwd: root, encoding: 'utf8' });
+function runNode(scriptParts, args = []) {
+  const script = resolveAgentScript(root, ...scriptParts);
+  return execFileSync('node', [script, ...args], { cwd: root, encoding: 'utf8' });
 }
 
-function runNodeAllowFail(args) {
+function runNodeAllowFail(scriptParts, args = []) {
   try {
-    return runNode(args);
+    return runNode(scriptParts, args);
   } catch (err) {
     return err.stdout?.toString?.() ?? err.message ?? '';
   }
@@ -32,6 +44,33 @@ function parseJson(text) {
   } catch {
     return null;
   }
+}
+
+function readQueue() {
+  try {
+    return JSON.parse(readFileSync(queuePath, 'utf8'));
+  } catch {
+    return { tasks: [] };
+  }
+}
+
+function readActiveTaskId() {
+  try {
+    const s = JSON.parse(readFileSync(statePath, 'utf8'));
+    return s.activeTaskId ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function isTaskInProgress(taskId) {
+  if (!taskId) return false;
+  const task = (readQueue().tasks ?? []).find((t) => t.id === taskId);
+  return task?.status === 'in_progress';
+}
+
+function hasInProgressTask() {
+  return (readQueue().tasks ?? []).some((t) => t.status === 'in_progress');
 }
 
 function removeDoneLine() {
@@ -53,6 +92,14 @@ function hasDoneLine() {
   return /^DONE\s*$/m.test(readFileSync(scratchpad, 'utf8'));
 }
 
+function isAgentLoopActive() {
+  if (process.env.AGENT_LOOP === '1') return true;
+  if (hasDoneLine()) return true;
+  const activeTaskId = readActiveTaskId();
+  if (activeTaskId && isTaskInProgress(activeTaskId)) return true;
+  return hasInProgressTask();
+}
+
 function formatFailures(verifyJson) {
   const failures = verifyJson?.failures ?? [];
   const text = failures
@@ -62,28 +109,13 @@ function formatFailures(verifyJson) {
 }
 
 function resolveTaskToComplete(activeTaskId) {
-  try {
-    if (activeTaskId) {
-      const q = JSON.parse(readFileSync(join(root, '.cursor/agent-loop/queue.json'), 'utf8'));
-      const t = (q.tasks ?? []).find(
-        (x) => x.id === activeTaskId && x.status !== 'done' && x.status !== 'blocked',
-      );
-      if (t) {
-        return activeTaskId;
-      }
-    }
-  } catch {
-    // ignore
+  if (activeTaskId && isTaskInProgress(activeTaskId)) {
+    return activeTaskId;
   }
 
-  try {
-    const q = JSON.parse(readFileSync(join(root, '.cursor/agent-loop/queue.json'), 'utf8'));
-    const inProg = (q.tasks ?? []).filter((t) => t.status === 'in_progress');
-    if (inProg.length === 1) {
-      return inProg[0].id;
-    }
-  } catch {
-    // ignore
+  const inProg = (readQueue().tasks ?? []).filter((t) => t.status === 'in_progress');
+  if (inProg.length === 1) {
+    return inProg[0].id;
   }
 
   try {
@@ -93,38 +125,37 @@ function resolveTaskToComplete(activeTaskId) {
       return m[1];
     }
   } catch {
-    // ignore
+    /* ignore */
   }
 
   return '';
-}
-
-function readActiveTaskId() {
-  try {
-    const s = JSON.parse(readFileSync(join(root, '.cursor/agent-loop/state.json'), 'utf8'));
-    return s.activeTaskId ?? '';
-  } catch {
-    return '';
-  }
 }
 
 if (status !== 'completed' || loopCount >= maxLoops) {
   emitEmpty();
 }
 
+if (composerMode === 'ask') {
+  emitEmpty();
+}
+
+if (!isAgentLoopActive()) {
+  emitEmpty();
+}
+
 if (hasDoneLine()) {
-  const verifyRaw = runNodeAllowFail(['scripts/agent/verify-touched.mjs']);
+  const verifyRaw = runNodeAllowFail(['verify-touched.mjs']);
   const verifyJson = parseJson(verifyRaw);
   const verifyOk = verifyJson?.ok === true;
 
   if (!verifyOk) {
     removeDoneLine();
     emitJson({
-      followup_message: `[Agent loop] DONE rifiutato: verifica fallita (lint/typecheck/test). Correggi:
+      followup_message: `[Agent loop] DONE rejected: verify failed (lint/typecheck/test). Fix:
 
 ${formatFailures(verifyJson)}
 
-Poi riscrivi DONE nello scratchpad.`,
+Then write DONE again in scratchpad.`,
     });
   }
 
@@ -132,10 +163,7 @@ Poi riscrivi DONE nello scratchpad.`,
   const taskToComplete = resolveTaskToComplete(activeTask);
 
   if (taskToComplete) {
-    const acceptanceRaw = runNodeAllowFail([
-      'scripts/agent/check-acceptance.mjs',
-      taskToComplete,
-    ]);
+    const acceptanceRaw = runNodeAllowFail(['check-acceptance.mjs', taskToComplete]);
     const acceptanceJson = parseJson(acceptanceRaw);
     const acceptanceOk = acceptanceJson?.ok === true;
 
@@ -143,33 +171,31 @@ Poi riscrivi DONE nello scratchpad.`,
       removeDoneLine();
       const unchecked = (acceptanceJson?.unchecked ?? []).slice(0, 5).join('\n');
       emitJson({
-        followup_message: `[Agent loop] DONE rifiutato: acceptance criteria non complete nel program.
+        followup_message: `[Agent loop] DONE rejected: acceptance criteria incomplete in program.
 
-Spunta tutte le voci - [x] in specs/agent-tasks/${taskToComplete}.md
+Check every - [x] in specs/agent-tasks/${taskToComplete}.md
 
-Mancanti:
+Missing:
 ${unchecked}
 
-Poi riscrivi DONE nello scratchpad.`,
+Then write DONE again in scratchpad.`,
       });
     }
 
     try {
-      runNode(['scripts/agent/update-task.mjs', 'done', taskToComplete]);
+      runNode(['update-task.mjs', 'done', taskToComplete]);
     } catch {
-      // non-blocking
+      /* non-blocking */
     }
   }
 
   removeDoneLine();
 
-  const nextJson = parseJson(runNodeAllowFail(['scripts/agent/next-task.mjs', '--json'])) ?? {
-    task: null,
-  };
+  const nextJson = parseJson(runNodeAllowFail(['next-task.mjs', '--json'])) ?? { task: null };
   if (nextJson.task?.id) {
-    const nextPrompt = runNodeAllowFail(['scripts/agent/next-task.mjs']).trim();
+    const nextPrompt = runNodeAllowFail(['next-task.mjs']).trim();
     emitJson({
-      followup_message: `[Agent loop] Task completato. Prossimo task:
+      followup_message: `[Agent loop] Task completed. Next task:
 
 ${nextPrompt}`,
     });
@@ -178,22 +204,27 @@ ${nextPrompt}`,
   emitEmpty();
 }
 
-const verifyRaw = runNodeAllowFail(['scripts/agent/verify-touched.mjs']);
+const verifyRaw = runNodeAllowFail(['verify-touched.mjs']);
 const verifyJson = parseJson(verifyRaw);
 const verifyOk = verifyJson?.ok === true;
+const packages = verifyJson?.packages ?? [];
+
+if (packages.length === 0 && process.env.AGENT_LOOP !== '1') {
+  emitEmpty();
+}
 
 if (!verifyOk) {
   emitJson({
-    followup_message: `[Agent loop iter ${loopCount + 1}/${maxLoops}] Verifica fallita (lint/typecheck/test). Correggi:
+    followup_message: `[Agent loop iter ${loopCount + 1}/${maxLoops}] Verify failed (lint/typecheck/test). Fix:
 
 ${formatFailures(verifyJson)}
 
-Spunta acceptance nel program, aggiorna scratchpad, scrivi DONE quando finito.`,
+Check acceptance in the program, update scratchpad, write DONE when finished.`,
   });
 }
 
 emitJson({
-  followup_message: `[Agent loop iter ${loopCount + 1}/${maxLoops}] Lint, typecheck e test ok sui package toccati.
+  followup_message: `[Agent loop iter ${loopCount + 1}/${maxLoops}] Lint, typecheck, and tests passed on touched packages.
 
-Completa acceptance (- [x] nel program), commit/push/PR, poi scrivi DONE nello scratchpad.`,
+Complete acceptance (- [x] in program), commit/push/PR, then write DONE in scratchpad.`,
 });

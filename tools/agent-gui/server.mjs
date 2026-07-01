@@ -20,7 +20,7 @@ import { QueueWatcher, readTaskSnapshot } from './lib/queue-watcher.mjs';
 import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
 import { runSetupChecks } from './lib/setup-check.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
-import { detectPackageManager } from '../../scripts/agent/lib/package-manager.mjs';
+import { detectPackageManager, resolveAgentScriptForRepo } from './lib/agent-scripts.mjs';
 import {
   DEFAULT_PORT,
   TASK_ID_RE,
@@ -332,7 +332,7 @@ async function handleApi(req, res, url) {
       if (!title) return sendJson(res, 400, { error: 'Titolo obbligatorio' });
       const { code, out } = await runCommand(
         'node',
-        [join(repoRoot, 'scripts', 'agent', 'init-task.mjs'), taskId, title],
+        [resolveAgentScriptForRepo(repoRoot, 'init-task.mjs'), taskId, title],
         repoRoot,
       );
       if (code !== 0) return sendJson(res, 400, { error: out || `exit ${code}` });
@@ -383,7 +383,7 @@ async function handleApi(req, res, url) {
       if (!existsSync(programPath)) return sendJson(res, 404, { error: 'Program non trovato' });
       const { code, out } = await runCommand(
         'node',
-        [join(repoRoot, 'scripts', 'agent', 'check-acceptance.mjs'), programPath],
+        [resolveAgentScriptForRepo(repoRoot, 'check-acceptance.mjs'), programPath],
         repoRoot,
       );
       return sendJson(res, 200, { ok: code === 0, output: out, code });
@@ -474,7 +474,7 @@ async function handleApi(req, res, url) {
       Connection: 'keep-alive',
     });
 
-    const script = join(repoRoot, 'scripts', 'agent', 'run-agent.mjs');
+    const script = resolveAgentScriptForRepo(repoRoot, 'run-agent.mjs');
     const backend = (process.env.AGENT_BACKEND ?? 'cursor').toLowerCase();
     const args = [
       '--workspace',

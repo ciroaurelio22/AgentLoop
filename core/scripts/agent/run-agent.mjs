@@ -8,9 +8,8 @@
  *   AGENT_MODEL=...              (backend-specific model id)
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, resolve, delimiter as PATH_DELIM } from 'node:path';
+import { join, resolve } from 'node:path';
+import { findAgentCli } from './lib/agent-cli.mjs';
 import { loopDir } from './lib/paths.mjs';
 
 function parseArgs(argv) {
@@ -37,35 +36,6 @@ function parseArgs(argv) {
     out.model = out.backend === 'claude' ? 'claude-sonnet-4-6' : 'composer-2.5-fast';
   }
   return out;
-}
-
-function findOnPath(names) {
-  if (process.env.AGENT_CLI && existsSync(process.env.AGENT_CLI)) {
-    return process.env.AGENT_CLI;
-  }
-  const pathKey = process.env.PATH ?? '';
-  for (const dir of pathKey.split(PATH_DELIM)) {
-    for (const name of names) {
-      const p = join(dir.trim(), name);
-      if (p && existsSync(p)) return p;
-    }
-  }
-  return null;
-}
-
-function findCursorAgent() {
-  const found = findOnPath(['agent.exe', 'agent.cmd', 'agent']);
-  if (found) return found;
-  if (process.platform === 'win32') {
-    const local = process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local');
-    const shim = join(local, 'cursor-agent', 'agent.cmd');
-    if (existsSync(shim)) return shim;
-  }
-  return 'agent';
-}
-
-function findClaudeAgent() {
-  return findOnPath(['claude.exe', 'claude.cmd', 'claude']) ?? 'claude';
 }
 
 function buildPrompt(taskRel, workspace) {
@@ -112,18 +82,15 @@ function buildClaudeArgs({ workspace, model, prompt }) {
 }
 
 function spawnAgent(agentPath, args, workspace, backend) {
-  const isCmd = agentPath.toLowerCase().endsWith('.cmd');
+  const isCmd = process.platform === 'win32' && agentPath.toLowerCase().endsWith('.cmd');
   const opts = {
     cwd: workspace,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
     windowsHide: true,
   };
-  if (process.platform === 'win32' && isCmd) {
+  if (isCmd) {
     return spawn('cmd.exe', ['/d', '/s', '/c', agentPath, ...args], opts);
-  }
-  if (backend === 'claude') {
-    return spawn(agentPath, args, { ...opts, shell: false });
   }
   return spawn(agentPath, args, { ...opts, shell: false });
 }
@@ -142,10 +109,13 @@ function killProcessTree(pid) {
 }
 
 const { workspace, task, model, backend } = parseArgs(process.argv.slice(2));
-const agentPath = backend === 'claude' ? findClaudeAgent() : findCursorAgent();
+const agentPath = findAgentCli(backend === 'claude' ? 'claude' : 'cursor');
 const taskRel = task.replace(/\\/g, '/');
 const prompt = buildPrompt(taskRel, workspace);
-const args = backend === 'claude' ? buildClaudeArgs({ workspace, model, prompt }) : buildCursorArgs({ workspace, model, prompt });
+const args =
+  backend === 'claude'
+    ? buildClaudeArgs({ workspace, model, prompt })
+    : buildCursorArgs({ workspace, model, prompt });
 
 console.error(`[run-agent] backend: ${backend}`);
 console.error(`[run-agent] binary: ${agentPath}`);

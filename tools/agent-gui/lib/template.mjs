@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { fillProgramTemplate } from '../../scripts/agent/lib/template-fill.mjs';
+import { fillProgramTemplate } from './agent-scripts.mjs';
 
 /** @param {string} repoRoot @param {string} taskId @param {string} title */
 export function fillTaskTemplate(repoRoot, taskId, title) {

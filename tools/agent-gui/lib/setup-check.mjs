@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { isValidRepo, loopDir } from './repo-utils.mjs';
+import { resolveAgentScriptForRepo } from './agent-scripts.mjs';
 
 function runCommand(cmd, args, cwd) {
   return new Promise((resolveRun) => {
@@ -39,6 +41,22 @@ export function resolveAgentBackend(repoRoot) {
   return fromEnv === 'claude' ? 'claude' : 'cursor';
 }
 
+/** @param {string | null} repoRoot @param {'cursor' | 'claude'} backend */
+async function loadAgentCliProbe(repoRoot, backend) {
+  const scriptPath = resolveAgentScriptForRepo(repoRoot ?? process.cwd(), 'lib', 'agent-cli.mjs');
+  if (!existsSync(scriptPath)) {
+    return {
+      binary: backend === 'claude' ? 'claude' : 'agent',
+      installed: false,
+      authenticated: false,
+      versionDetail: 'Agent scripts not found in this workspace.',
+      authDetail: 'Install agent-loop scripts in the repo.',
+    };
+  }
+  const mod = await import(pathToFileURL(scriptPath).href);
+  return mod.probeAgentCli(backend, repoRoot ?? process.cwd());
+}
+
 /**
  * @param {string | null} repoRoot
  * @returns {Promise<{ ready: boolean; backend: string; repo: string | null; checks: object[] }>}
@@ -46,40 +64,15 @@ export function resolveAgentBackend(repoRoot) {
 export async function runSetupChecks(repoRoot) {
   const root = repoRoot ? resolve(repoRoot) : null;
   const backend = resolveAgentBackend(root);
-  const cliName = backend === 'claude' ? 'claude' : 'agent';
+  /** @type {'cursor' | 'claude'} */
+  const backendId = backend === 'claude' ? 'claude' : 'cursor';
+  const cliName = backendId === 'claude' ? 'claude' : 'agent';
   const cwd = root ?? process.cwd();
 
   const workspaceOk = Boolean(root && isValidRepo(root));
   const autostartOk = workspaceOk && existsSync(join(loopDir(root), 'autostart'));
 
-  const version = await runCommand(cliName, ['--version'], cwd);
-  const agentInstalled = version.code === 0;
-
-  let agentAuth = false;
-  let agentAuthDetail = `Run \`${cliName} login\` in a terminal, then Re-check.`;
-  if (agentInstalled) {
-    if (backend === 'claude') {
-      const auth = await runCommand('claude', ['auth', 'status'], cwd);
-      agentAuth = auth.code === 0 && !/not logged in/i.test(auth.out);
-      if (!agentAuth && auth.out) agentAuthDetail = auth.out.split('\n')[0];
-    } else {
-      const status = await runCommand('agent', ['status'], cwd);
-      if (status.code === 127) {
-        agentAuth = false;
-        agentAuthDetail = 'Could not verify login. Run `agent login`, then Re-check.';
-      } else {
-        agentAuth =
-          status.code === 0 &&
-          !/not logged in|login required|unauthenticated/i.test(status.out);
-        if (!agentAuth && status.out) agentAuthDetail = status.out.split('\n')[0];
-      }
-    }
-  } else {
-    agentAuthDetail =
-      backend === 'claude'
-        ? 'Install Claude Code CLI and run `claude login`.'
-        : 'Install Cursor CLI and run `agent login`.';
-  }
+  const cli = await loadAgentCliProbe(root, backendId);
 
   const ghVersion = await runCommand('gh', ['--version'], cwd);
   const ghInstalled = ghVersion.code === 0;
@@ -111,18 +104,18 @@ export async function runSetupChecks(repoRoot) {
     },
     {
       id: 'agentInstalled',
-      label: `${cliName} CLI installed (${backend})`,
-      ok: agentInstalled,
+      label: `${cliName} CLI installed (${backendId})`,
+      ok: cli.installed,
       required: true,
-      detail: agentInstalled ? version.out.split('\n')[0] : agentAuthDetail,
+      detail: cli.installed ? `${cli.versionDetail} (${cli.binary})` : cli.versionDetail,
       fix: null,
     },
     {
       id: 'agentAuth',
       label: `${cliName} CLI authenticated`,
-      ok: agentAuth,
+      ok: cli.authenticated,
       required: true,
-      detail: agentAuth ? 'Ready to run agents' : agentAuthDetail,
+      detail: cli.authenticated ? 'Ready to run agents' : cli.authDetail,
       fix: null,
     },
     {
@@ -143,7 +136,7 @@ export async function runSetupChecks(repoRoot) {
 
   return {
     ready,
-    backend,
+    backend: backendId,
     repo: root,
     checks,
   };

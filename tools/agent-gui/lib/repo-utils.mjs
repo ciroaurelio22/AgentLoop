@@ -27,10 +27,13 @@ export function saveConfig(data) {
 
 export function isValidRepo(path) {
   const root = resolve(path);
+  const hasScripts =
+    existsSync(join(root, 'scripts', 'agent', 'init-task.mjs')) ||
+    existsSync(join(root, 'core', 'scripts', 'agent', 'init-task.mjs'));
   return (
     existsSync(loopDir(root)) &&
     existsSync(join(root, 'specs', 'agent-tasks')) &&
-    existsSync(join(root, 'scripts', 'agent', 'init-task.mjs'))
+    hasScripts
   );
 }
 
