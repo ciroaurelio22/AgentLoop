@@ -14,7 +14,7 @@ const blockedPatterns = [
   /git\s+push\s+-f\s/i,
   /git\s+push\s+.*\s+-f\s*$/i,
   /curl\s+(-[^\s]+\s+)*https?:\/\/[^\s]*app\.vigila81\.it/i,
-  /\bnpm\s+(install|ci|run)\b/i,
+  /\bnpm\s+(install|ci)\b/i,
   /\byarn\s+(install|add)\b/i,
   /\bpnpm\s+add\s+(-g|--global)(\s|$)/i,
 ];

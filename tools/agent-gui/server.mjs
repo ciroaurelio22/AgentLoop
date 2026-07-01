@@ -88,7 +88,27 @@ function removeGuiPid() {
   }
 }
 
+function killActiveAgent() {
+  if (!activeAgent || activeAgent.exitCode !== null) {
+    activeAgent = null;
+    return;
+  }
+  const pid = activeAgent.pid;
+  if (process.platform === 'win32' && pid) {
+    spawn('taskkill', ['/F', '/T', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true });
+  } else if (pid) {
+    try {
+      activeAgent.kill('SIGTERM');
+    } catch {
+      /* ignore */
+    }
+  }
+  activeAgent = null;
+  clearAgentAskBroadcaster();
+}
+
 function shutdown(signal) {
+  killActiveAgent();
   removeGuiPid();
   process.exit(signal ? 0 : 0);
 }
@@ -102,10 +122,21 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
 function readBody(req) {
   return new Promise((resolveBody, reject) => {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('Payload too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
     req.on('end', () => {
       try {
         const raw = Buffer.concat(chunks).toString('utf8');
@@ -447,6 +478,7 @@ async function handleApi(req, res, url) {
         mkdirSync(dirname(programPath), { recursive: true });
         programWatcher.markLocalWrite();
         writeFileSync(programPath, program, 'utf8');
+        queueWatcher.notify();
         return sendJson(res, 200, { ok: true });
       } catch {
         return sendJson(res, 400, { error: 'Body JSON non valido' });
@@ -664,15 +696,7 @@ async function handleApi(req, res, url) {
 
     req.on('close', () => {
       if (activeAgent && activeAgent.exitCode === null) {
-        const pid = activeAgent.pid;
-        if (process.platform === 'win32' && pid) {
-          spawn('taskkill', ['/F', '/T', '/PID', String(pid)], {
-            stdio: 'ignore',
-            windowsHide: true,
-          });
-        } else {
-          activeAgent.kill('SIGTERM');
-        }
+        killActiveAgent();
       }
     });
 

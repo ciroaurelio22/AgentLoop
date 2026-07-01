@@ -3,10 +3,27 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, delimiter as PATH_DELIM } from 'node:path';
 
-function findOnPath(names) {
-  if (process.env.AGENT_CLI && existsSync(process.env.AGENT_CLI)) {
-    return process.env.AGENT_CLI;
+function cliOverrideForBackend(backend) {
+  if (backend === 'claude' && process.env.AGENT_CLI_CLAUDE && existsSync(process.env.AGENT_CLI_CLAUDE)) {
+    return process.env.AGENT_CLI_CLAUDE;
   }
+  if (backend === 'codex' && process.env.AGENT_CLI_CODEX && existsSync(process.env.AGENT_CLI_CODEX)) {
+    return process.env.AGENT_CLI_CODEX;
+  }
+  if (backend === 'cursor') {
+    if (process.env.AGENT_CLI_CURSOR && existsSync(process.env.AGENT_CLI_CURSOR)) {
+      return process.env.AGENT_CLI_CURSOR;
+    }
+    if (process.env.AGENT_CLI && existsSync(process.env.AGENT_CLI)) {
+      return process.env.AGENT_CLI;
+    }
+  }
+  return null;
+}
+
+function findOnPath(names, backend) {
+  const override = cliOverrideForBackend(backend);
+  if (override) return override;
   const pathKey = process.env.PATH ?? '';
   for (const dir of pathKey.split(PATH_DELIM)) {
     for (const name of names) {
@@ -20,12 +37,12 @@ function findOnPath(names) {
 /** @param {'cursor' | 'claude' | 'codex'} backend */
 export function resolveAgentCliPath(backend) {
   if (backend === 'claude') {
-    return findOnPath(['claude.exe', 'claude.cmd', 'claude']);
+    return findOnPath(['claude.exe', 'claude.cmd', 'claude'], backend);
   }
   if (backend === 'codex') {
-    return findOnPath(['codex.exe', 'codex.cmd', 'codex']);
+    return findOnPath(['codex.exe', 'codex.cmd', 'codex'], backend);
   }
-  const found = findOnPath(['agent.exe', 'agent.cmd', 'agent']);
+  const found = findOnPath(['agent.exe', 'agent.cmd', 'agent'], backend);
   if (found) return found;
   if (process.platform === 'win32') {
     const local = process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local');

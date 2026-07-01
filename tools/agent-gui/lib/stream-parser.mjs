@@ -1,6 +1,9 @@
-/** Parser stream-json Cursor CLI → chunk strutturati per la UI chat. */
+/** Parser stream-json CLI → chunk strutturati per la UI chat. */
 
-const PROMPT_MARKER = 'Completa il program del task agent loop';
+const PROMPT_MARKERS = [
+  'Complete the agent-loop program task',
+  'Completa il program del task agent loop',
+];
 
 function contentText(content) {
   if (typeof content === 'string' && content) return content;
@@ -37,9 +40,19 @@ function basename(path) {
 function shortenPath(path) {
   if (!path) return '';
   const norm = String(path).replace(/\\/g, '/');
-  const idx = norm.indexOf('/Vigila81/');
-  if (idx >= 0) return norm.slice(idx + '/Vigila81/'.length);
+  const markers = ['/specs/', '/scripts/', '/src/', '/tools/', '/apps/', '/packages/'];
+  for (const marker of markers) {
+    const idx = norm.indexOf(marker);
+    if (idx >= 0) return norm.slice(idx + 1);
+  }
+  const parts = norm.split('/').filter(Boolean);
+  if (parts.length >= 2) return parts.slice(-2).join('/');
   return basename(norm);
+}
+
+function isDraftPromptText(text) {
+  if (!text) return false;
+  return PROMPT_MARKERS.some((marker) => text.includes(marker));
 }
 
 /** @returns {{ label: string; detail: string } | null} */
@@ -106,8 +119,8 @@ export function parseStreamLine(line) {
   }
 
   if (!trimmed.startsWith('{')) {
-    if (trimmed.includes(PROMPT_MARKER)) {
-      return { kind: 'user', text: 'Completa il program del task agent loop Vigila81…' };
+    if (isDraftPromptText(trimmed)) {
+      return { kind: 'user', text: 'Draft program request…' };
     }
     return { kind: 'assistant', delta: trimmed };
   }
@@ -159,11 +172,11 @@ export function parseStreamLine(line) {
 
   if (type === 'user') {
     const text = extractAssistantText(obj);
-    if (text && !text.includes(PROMPT_MARKER)) {
+    if (text && !isDraftPromptText(text)) {
       return { kind: 'user', text };
     }
-    if (text?.includes(PROMPT_MARKER)) {
-      return { kind: 'user', text: 'Completa il program del task agent loop Vigila81…' };
+    if (isDraftPromptText(text)) {
+      return { kind: 'user', text: 'Draft program request…' };
     }
     return null;
   }
@@ -184,6 +197,21 @@ export function parseStreamLine(line) {
     const text = typeof obj.result === 'string' ? obj.result : extractAssistantText(obj);
     if (text) return { kind: 'assistant', delta: text };
     return null;
+  }
+
+  if (obj.item && typeof obj.item === 'object') {
+    const item = obj.item;
+    if (item.type === 'agent_message' && typeof item.text === 'string' && item.text) {
+      return { kind: 'assistant', delta: item.text };
+    }
+    if (item.type === 'reasoning' || item.type === 'reasoning_summary') return null;
+    if (item.type === 'command_execution' && item.command) {
+      return { kind: 'tool', callId: item.id ?? '', status: 'done', label: 'Shell', detail: String(item.command).slice(0, 72) };
+    }
+  }
+
+  if (typeof obj.message === 'string' && obj.message && !obj.type) {
+    return { kind: 'assistant', delta: obj.message };
   }
 
   return null;

@@ -12,6 +12,8 @@ import { join, resolve } from 'node:path';
 import { findAgentCli } from './lib/agent-cli.mjs';
 import { loopDir } from './lib/paths.mjs';
 
+const VALID_BACKENDS = new Set(['cursor', 'claude', 'codex']);
+
 function parseArgs(argv) {
   const out = {
     workspace: process.cwd(),
@@ -30,6 +32,10 @@ function parseArgs(argv) {
     console.error(
       'Usage: node run-agent.mjs --workspace <repo> --task specs/agent-tasks/TASK-001.md [--backend cursor|claude|codex] [--model ...]',
     );
+    process.exit(2);
+  }
+  if (!VALID_BACKENDS.has(out.backend)) {
+    console.error(`Invalid backend "${out.backend}". Use cursor, claude, or codex.`);
     process.exit(2);
   }
   if (!out.model) {

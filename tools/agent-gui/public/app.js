@@ -52,6 +52,9 @@ const els = {
   bootMessage: $('#boot-message'),
 };
 
+/** @type {Promise<boolean>} */
+let agentAskChain = Promise.resolve(true);
+
 const state = {
   taskId: 'TASK-001',
   activeProgramId: null,
@@ -297,6 +300,7 @@ function renderSetupChecklist(setup) {
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
@@ -337,9 +341,13 @@ function setSyncBadge(mode) {
 }
 
 function parseTaskIdFromEditor() {
-  const head = els.programEditor.value.slice(0, 400);
+  const head = els.programEditor.value.slice(0, 800);
   const m = head.match(/^#\s*(TASK-\d+)/im);
-  return m ? m[1].toUpperCase() : state.activeProgramId ?? state.taskId;
+  return m ? m[1].toUpperCase() : null;
+}
+
+function resolveTaskId() {
+  return (state.activeProgramId ?? state.taskId ?? parseTaskIdFromEditor() ?? 'TASK-001').toUpperCase();
 }
 
 /** Match server-side program save: LF endings, single trailing newline. */
@@ -757,6 +765,12 @@ function showAgentAskDialog(payload) {
   });
 }
 
+function enqueueAgentAskDialog(payload) {
+  const run = agentAskChain.then(() => showAgentAskDialog(payload));
+  agentAskChain = run.catch(() => false);
+  return run;
+}
+
 function closeAgentAskDialog(result) {
   els.agentAskDialog?.close();
   state.agentAskPayload = null;
@@ -878,16 +892,21 @@ async function createTask(quiet = false) {
 }
 
 async function saveProgram() {
-  const taskId = parseTaskIdFromEditor();
+  const taskId = resolveTaskId();
+  const editorId = parseTaskIdFromEditor();
+  if (editorId && editorId !== taskId) {
+    toast(`Program header is ${editorId}; saving as ${taskId}`, 'warning');
+  }
   const title = els.taskTitle.value.trim();
   try {
     await api(`/api/program/${taskId}`);
   } catch {
     if (!title) {
       toast('Enter a title', 'warning');
-      return;
+      return false;
     }
-    await ensureTaskPersisted();
+    const created = await ensureProgramOnDisk(taskId, title);
+    if (!created) return false;
   }
   try {
     const canonical = canonicalProgramText(els.programEditor.value);
@@ -903,13 +922,15 @@ async function saveProgram() {
     setActiveProgram(taskId);
     await loadTaskList();
     toast('Saved', 'success');
+    return true;
   } catch (err) {
     toast(err.message, 'error');
+    return false;
   }
 }
 
 async function reloadProgram() {
-  const taskId = parseTaskIdFromEditor();
+  const taskId = resolveTaskId();
   try {
     const data = await api(`/api/program/${taskId}`);
     applyProgramContent(data.program);
@@ -921,8 +942,9 @@ async function reloadProgram() {
 }
 
 async function verifyAcceptance() {
-  await saveProgram();
-  const taskId = parseTaskIdFromEditor();
+  const saved = await saveProgram();
+  if (!saved) return;
+  const taskId = resolveTaskId();
   try {
     const data = await api('/api/acceptance', {
       method: 'POST',
@@ -1002,12 +1024,18 @@ async function startAgent({ taskId, title, description }) {
   }
 
   const reader = res.body?.getReader();
-  if (!reader) return;
+  if (!reader) {
+    setBusy(false);
+    setStatus('Error', 'error');
+    toast('Agent stream unavailable', 'error');
+    return;
+  }
 
   const decoder = new TextDecoder();
   let buffer = '';
 
   let sawActivity = false;
+  let sawDone = false;
 
   const handleEvent = (event, data) => {
     if (event === 'chunk') {
@@ -1026,7 +1054,7 @@ async function startAgent({ taskId, title, description }) {
         status: 'running',
       });
       activityByTask.set(id, activityFeed.exportState());
-      void showAgentAskDialog(data).then((ok) => {
+      void enqueueAgentAskDialog(data).then((ok) => {
         activityFeed?.push({
           type: 'status',
           label: ok ? 'Risposta inviata' : 'Domanda annullata',
@@ -1036,6 +1064,7 @@ async function startAgent({ taskId, title, description }) {
         activityByTask.set(id, activityFeed.exportState());
       });
     } else if (event === 'done') {
+      sawDone = true;
       const empty = data.code === 0 && !sawActivity;
       activityFeed?.finish(data.code, { empty });
       activityByTask.set(id, activityFeed.exportState());
@@ -1057,27 +1086,34 @@ async function startAgent({ taskId, title, description }) {
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sep;
-    while ((sep = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      let event = 'message';
-      let dataStr = '';
-      for (const line of block.split('\n')) {
-        if (line.startsWith('event: ')) event = line.slice(7);
-        else if (line.startsWith('data: ')) dataStr = line.slice(6);
-      }
-      if (dataStr) {
-        try {
-          handleEvent(event, JSON.parse(dataStr));
-        } catch {
-          /* ignore */
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep;
+      while ((sep = buffer.indexOf('\n\n')) >= 0) {
+        const block = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        let event = 'message';
+        let dataStr = '';
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event: ')) event = line.slice(7);
+          else if (line.startsWith('data: ')) dataStr = line.slice(6);
+        }
+        if (dataStr) {
+          try {
+            handleEvent(event, JSON.parse(dataStr));
+          } catch {
+            /* ignore */
+          }
         }
       }
+    }
+  } finally {
+    if (!sawDone) {
+      setBusy(false);
+      setStatus('Interrupted', 'error');
     }
   }
 }
@@ -1105,7 +1141,7 @@ async function createAndDraft() {
 }
 
 async function draftExisting() {
-  let taskId = parseTaskIdFromEditor();
+  let taskId = resolveTaskId();
   let title = els.taskTitle.value.trim();
 
   if (!els.programEditor.value.trim()) {
@@ -1118,7 +1154,7 @@ async function draftExisting() {
     taskId = created.taskId;
     title = els.taskTitle.value.trim() || title;
   } else {
-    taskId = parseTaskIdFromEditor();
+    taskId = resolveTaskId();
     title = title || taskId;
     const persisted = await ensureProgramOnDisk(taskId, title);
     if (!persisted) return;

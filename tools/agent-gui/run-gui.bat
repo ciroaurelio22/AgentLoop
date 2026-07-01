@@ -9,11 +9,4 @@ if errorlevel 1 (
   exit /b 1
 )
 
-where pnpm >nul 2>&1
-if errorlevel 1 (
-  echo pnpm non trovato nel PATH. Installalo e riapri il terminale.
-  pause
-  exit /b 1
-)
-
 node tools\agent-gui\server.mjs

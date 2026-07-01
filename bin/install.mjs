@@ -19,7 +19,7 @@ import {
 } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { detectPackageManager } from '../core/scripts/agent/lib/package-manager.mjs';
+import { detectPackageManager, pmRun } from '../core/scripts/agent/lib/package-manager.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const KIT_ROOT = resolve(__dirname, '..');
@@ -216,7 +216,6 @@ function hasExistingLoop(targetRoot) {
 }
 
 function printDoneMessage(targetRoot, opts, detectedPm) {
-  const pm = detectedPm === 'npm' ? 'npm' : detectedPm;
   const isUpdate = opts.updated || (opts.force && hasExistingLoop(targetRoot));
 
   console.log(`\nDetected package manager: ${detectedPm} (verify.packageManager: auto)`);
@@ -224,9 +223,9 @@ function printDoneMessage(targetRoot, opts, detectedPm) {
   if (isUpdate) {
     console.log('\nUpdate complete. Queue, task programs, and scratchpad were preserved.');
     console.log('\nNext steps:');
-    console.log(`  1. ${pm} agent:status              # review queue`);
-    console.log(`  2. ${pm} agent:gui:ensure          # ensure Agent Console is running`);
-    console.log(`  3. ${pm} agent:next                # continue pending task (if any)`);
+    console.log(`  1. ${pmRun(detectedPm, 'agent:status')}              # review queue`);
+    console.log(`  2. ${pmRun(detectedPm, 'agent:gui:ensure')}          # ensure Agent Console is running`);
+    console.log(`  3. ${pmRun(detectedPm, 'agent:next')}                # continue pending task (if any)`);
     console.log('  4. Start a new Cursor Agent session # hooks were refreshed');
     return;
   }
@@ -237,7 +236,7 @@ function printDoneMessage(targetRoot, opts, detectedPm) {
     '  1. node -e "require(\'node:fs\').mkdirSync(\'.agent-loop\',{recursive:true}); require(\'node:fs\').writeFileSync(\'.agent-loop/autostart\',\'\')"',
   );
   console.log('  2. Edit agent-loop.config.json   # verify + branch defaults');
-  console.log(`  3. ${pm} agent:init ${taskId} "First task"`);
+  console.log(`  3. ${pmRun(detectedPm, 'agent:init')} -- ${taskId} "First task"`);
   console.log('  4. Install Cursor CLI (agent) or Claude Code CLI (claude) — see README.md');
   console.log('  5. Cursor skills installed: .cursor/skills/uninstall, .cursor/skills/update');
 }
