@@ -18,11 +18,12 @@ import { fileURLToPath } from 'node:url';
 import { ProgramWatcher } from './lib/program-watcher.mjs';
 import { QueueWatcher, readTaskSnapshot } from './lib/queue-watcher.mjs';
 import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
-import { runSetupChecks, probeInstalledProviders } from './lib/setup-check.mjs';
+import { runSetupChecks } from './lib/setup-check.mjs';
+import { warmProviderStatus, getInstalledProviders, isProviderInstalledOnPath } from './lib/provider-status.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
 import { detectPackageManager, resolveAgentScriptForRepo } from './lib/agent-scripts.mjs';
 import { readAgentSettings, writeAgentSettings, resolveAgentBackend } from './lib/agent-settings.mjs';
-import { fetchAgentModels, invalidateAgentModelsCache } from './lib/agent-models.mjs';
+import { fetchAgentModels, invalidateAgentModelsCache, warmCatalog } from './lib/agent-models.mjs';
 import {
   DEFAULT_PORT,
   TASK_ID_RE,
@@ -153,10 +154,9 @@ function writeDraftPrompt({ taskId, title, taskRel, description, currentProgram 
   writeFileSync(draftPath, body, 'utf8');
 }
 
-async function getState() {
+function getState() {
   const autostartPath = repoRoot ? join(loopDir(repoRoot), 'autostart') : null;
   const agent = readAgentSettings(repoRoot);
-  const installedProviders = await probeInstalledProviders(repoRoot);
   return {
     repo: repoRoot,
     repoValid: repoRoot ? isValidRepo(repoRoot) : false,
@@ -164,7 +164,7 @@ async function getState() {
     autostart: autostartPath ? existsSync(autostartPath) : false,
     agentBackend: agent.backend,
     model: agent.model,
-    installedProviders,
+    installedProviders: getInstalledProviders(),
     agentRunning: activeAgent !== null && activeAgent.exitCode === null,
   };
 }
@@ -192,7 +192,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/state') {
     ensureRepo();
-    return sendJson(res, 200, await getState());
+    return sendJson(res, 200, getState());
   }
 
   if (req.method === 'GET' && url.pathname === '/api/agent/settings') {
@@ -234,12 +234,8 @@ async function handleApi(req, res, url) {
       if (backend !== undefined && backend !== 'cursor' && backend !== 'claude' && backend !== 'codex') {
         return sendJson(res, 400, { error: 'Provider must be cursor, claude, or codex' });
       }
-      if (backend !== undefined) {
-        const installedProviders = await probeInstalledProviders(root);
-        const provider = installedProviders.find((p) => p.id === backend);
-        if (!provider?.installed) {
-          return sendJson(res, 400, { error: `${backend} CLI is not installed` });
-        }
+      if (backend !== undefined && !isProviderInstalledOnPath(backend)) {
+        return sendJson(res, 400, { error: `${backend} CLI is not installed` });
       }
       const model = body.model !== undefined ? String(body.model).trim() : undefined;
       if (model !== undefined && !model) {
@@ -271,7 +267,10 @@ async function handleApi(req, res, url) {
       clearPrStatusCache();
       queueWatcher.setRepo(repoRoot);
       writeGuiPid();
-      return sendJson(res, 200, await getState());
+      await warmProviderStatus(repoRoot);
+      invalidateAgentModelsCache(repoRoot);
+      await warmCatalog(repoRoot);
+      return sendJson(res, 200, getState());
     } catch {
       return sendJson(res, 400, { error: 'Body JSON non valido' });
     }
@@ -668,16 +667,21 @@ function openBrowser(url) {
 function main() {
   const port = Number(process.env.AGENT_GUI_PORT) || DEFAULT_PORT;
   const server = createAppServer();
-  server.listen(port, '127.0.0.1', () => {
-    writeGuiPid();
-    const url = `http://127.0.0.1:${port}`;
-    console.log(`Agent Console → ${url}`);
-    if (repoRoot) console.log(`Workspace: ${repoRoot}`);
-    else console.log('No workspace — set path in UI');
-    if (process.env.AGENT_GUI_NO_OPEN !== '1') {
-      openBrowser(url);
-    }
-  });
+  ensureRepo();
+  void Promise.all([warmProviderStatus(repoRoot), warmCatalog(repoRoot ?? process.cwd())]).then(
+    () => {
+      server.listen(port, '127.0.0.1', () => {
+        writeGuiPid();
+        const url = `http://127.0.0.1:${port}`;
+        console.log(`Agent Console → ${url}`);
+        if (repoRoot) console.log(`Workspace: ${repoRoot}`);
+        else console.log('No workspace — set path in UI');
+        if (process.env.AGENT_GUI_NO_OPEN !== '1') {
+          openBrowser(url);
+        }
+      });
+    },
+  );
 }
 
 main();

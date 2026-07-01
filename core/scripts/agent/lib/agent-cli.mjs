@@ -18,12 +18,12 @@ function findOnPath(names) {
 }
 
 /** @param {'cursor' | 'claude' | 'codex'} backend */
-export function findAgentCli(backend) {
+export function resolveAgentCliPath(backend) {
   if (backend === 'claude') {
-    return findOnPath(['claude.exe', 'claude.cmd', 'claude']) ?? 'claude';
+    return findOnPath(['claude.exe', 'claude.cmd', 'claude']);
   }
   if (backend === 'codex') {
-    return findOnPath(['codex.exe', 'codex.cmd', 'codex']) ?? 'codex';
+    return findOnPath(['codex.exe', 'codex.cmd', 'codex']);
   }
   const found = findOnPath(['agent.exe', 'agent.cmd', 'agent']);
   if (found) return found;
@@ -32,7 +32,31 @@ export function findAgentCli(backend) {
     const shim = join(local, 'cursor-agent', 'agent.cmd');
     if (existsSync(shim)) return shim;
   }
-  return 'agent';
+  return null;
+}
+
+/** @param {'cursor' | 'claude' | 'codex'} backend */
+export function isAgentCliOnPath(backend) {
+  return Boolean(resolveAgentCliPath(backend));
+}
+
+/** @returns {{ id: 'cursor' | 'claude' | 'codex'; installed: boolean; binary: string }[]} */
+export function listInstalledProvidersOnPath() {
+  /** @type {('cursor' | 'claude' | 'codex')[]} */
+  const backends = ['cursor', 'claude', 'codex'];
+  return backends.map((id) => {
+    const path = resolveAgentCliPath(id);
+    return {
+      id,
+      installed: Boolean(path),
+      binary: path ?? (id === 'claude' ? 'claude' : id === 'codex' ? 'codex' : 'agent'),
+    };
+  });
+}
+
+/** @param {'cursor' | 'claude' | 'codex'} backend */
+export function findAgentCli(backend) {
+  return resolveAgentCliPath(backend) ?? (backend === 'claude' ? 'claude' : backend === 'codex' ? 'codex' : 'agent');
 }
 
 /**

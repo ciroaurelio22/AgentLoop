@@ -37,6 +37,8 @@ const els = {
   descCancel: $('#desc-cancel'),
   descSubmit: $('#desc-submit'),
   toast: $('#toast'),
+  bootOverlay: $('#boot-overlay'),
+  bootMessage: $('#boot-message'),
 };
 
 const state = {
@@ -101,6 +103,21 @@ function toast(message, type = 'info') {
   els.toast.className = `toast ${type}`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => els.toast.classList.add('hidden'), 3500);
+}
+
+function setBootMessage(message) {
+  if (els.bootMessage) els.bootMessage.textContent = message;
+}
+
+/** @param {() => Promise<unknown>} fn */
+async function bootStep(message, fn) {
+  setBootMessage(message);
+  return fn();
+}
+
+function hideBootLoader() {
+  document.body.classList.remove('boot-loading');
+  els.bootOverlay?.setAttribute('aria-busy', 'false');
 }
 
 async function api(path, options = {}) {
@@ -455,7 +472,7 @@ function applyProviderOptions(providers, selectedBackend) {
 function setAgentSettingsEnabled(enabled) {
   const hasInstalledProvider = state.installedProviders?.some((p) => p.installed) ?? true;
   const allow = enabled && hasInstalledProvider;
-  els.agentBackend.disabled = !allow || state.agentRunning || state.loadingAgentModels;
+  els.agentBackend.disabled = !allow || state.agentRunning;
   els.agentModel.disabled = !enabled || state.agentRunning || state.loadingAgentModels;
 }
 
@@ -504,22 +521,21 @@ async function loadAgentModels({ backend, selectedModel } = {}) {
     return null;
   }
 
+  const modelIdHint = selectedModel ?? state.selectedModel;
   state.loadingAgentModels = true;
-  setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !state.agentRunning);
-  renderModelSelect([], selectedModel ?? state.selectedModel, { loading: true });
+  els.agentModel.disabled = true;
 
   try {
     const params = new URLSearchParams();
     if (backend) params.set('backend', backend);
     const query = params.toString();
     const data = await api(`/api/agent/models${query ? `?${query}` : ''}`);
-    const modelId = selectedModel ?? state.selectedModel ?? data.models?.[0]?.id ?? '';
+    const modelId = modelIdHint ?? data.models?.[0]?.id ?? '';
     state.selectedModel = modelId;
     renderModelSelect(data.models ?? [], modelId, { error: data.error });
     return data;
   } catch (err) {
-    renderModelSelect([], selectedModel ?? state.selectedModel, { error: err.message });
-    toast(err.message, 'error');
+    renderModelSelect([], modelIdHint, { error: err.message });
     return null;
   } finally {
     state.loadingAgentModels = false;
@@ -536,7 +552,10 @@ function applyAgentSettings(data) {
   return resolved;
 }
 
-async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChange = false } = {}) {
+async function saveAgentSettings(
+  patch,
+  { quiet = false, resetModelOnBackendChange = false, skipModelReload = false } = {},
+) {
   if (state.savingAgentSettings || state.agentRunning) return null;
   state.savingAgentSettings = true;
   try {
@@ -551,9 +570,11 @@ async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChan
       installedProviders: state.installedProviders,
     });
     state.selectedModel = data.model;
-    await loadAgentModels({ backend: data.backend, selectedModel: data.model });
+    if (!skipModelReload) {
+      void loadAgentModels({ backend: data.backend, selectedModel: data.model });
+    }
     if (!quiet) toast('Agent settings saved', 'success');
-    await refreshSetup();
+    void refreshSetup();
     return data;
   } catch (err) {
     toast(err.message, 'error');
@@ -563,7 +584,7 @@ async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChan
   }
 }
 
-async function refreshState() {
+async function refreshState({ skipModels = false } = {}) {
   const data = await api('/api/state');
   if (data.repo) els.repoPath.value = data.repo;
   state.taskId = data.nextTaskId;
@@ -573,12 +594,18 @@ async function refreshState() {
   if (data.repoValid && resolved.changed) {
     await saveAgentSettings(
       { backend: resolved.backend, resetModelOnBackendChange: true },
-      { quiet: true },
+      { quiet: true, skipModelReload: skipModels },
     );
-    return refreshState();
+    return refreshState({ skipModels });
   }
   if (data.repoValid) {
-    await loadAgentModels({ backend: resolved.backend, selectedModel: data.model });
+    const saved = data.model ?? state.selectedModel;
+    if (saved) {
+      renderModelSelect([{ id: saved, label: saved }], saved);
+    }
+    if (!skipModels) {
+      void loadAgentModels({ backend: resolved.backend, selectedModel: saved });
+    }
   } else {
     renderModelSelect([], '', { error: 'Select workspace first' });
   }
@@ -733,10 +760,9 @@ async function applyWorkspaceFromGate() {
     return;
   }
   await refreshState();
-  await loadAgentModels();
   connectTasksWatch();
-  await loadTaskList();
-  await refreshSetup();
+  void loadTaskList();
+  void refreshSetup();
   toast('Workspace applied', 'success');
 }
 
@@ -899,10 +925,9 @@ function bindEvents() {
       return;
     }
     await refreshState();
-    await loadAgentModels();
     connectTasksWatch();
-    await loadTaskList();
-    await refreshSetup();
+    void loadTaskList();
+    void refreshSetup();
     toast('Workspace applied', 'success');
   });
 
@@ -1029,23 +1054,45 @@ async function init() {
   });
   bindEvents();
   try {
-    await refreshState();
-    if (els.repoPath.value.trim()) {
-      await syncWorkspace(els.repoPath.value);
-    }
     connectTasksWatch();
-    const tasks = await loadTaskList();
-    await refreshSetup();
+
+    const stateData = await bootStep('Caricamento workspace e impostazioni…', () =>
+      refreshState({ skipModels: true }),
+    );
+
+    const tasks = await bootStep('Caricamento task…', () => loadTaskList());
+
+    await bootStep('Verifica configurazione…', () => refreshSetup());
+
+    if (stateData?.repoValid) {
+      const saved = stateData.model ?? state.selectedModel;
+      await bootStep('Caricamento modelli agent…', () =>
+        loadAgentModels({ backend: els.agentBackend.value, selectedModel: saved }),
+      );
+    }
+
+    if (els.repoPath.value.trim()) {
+      await bootStep('Sincronizzazione workspace…', () => syncWorkspace(els.repoPath.value));
+    }
+
     if (tasks?.tasks?.length === 1) {
-      await loadTask(tasks.tasks[0].id);
+      await bootStep('Apertura task…', () => loadTask(tasks.tasks[0].id));
     } else {
       activityFeed?.showPlaceholder('Select a task from the sidebar');
     }
-    if (!els.repoPath.value.trim()) {
-      if (els.setupRepoPath) els.setupRepoPath.focus();
+
+    setBootMessage('Pronto');
+    await new Promise((resolve) => setTimeout(resolve, 220));
+
+    if (!els.repoPath.value.trim() && els.setupRepoPath) {
+      els.setupRepoPath.focus();
     }
   } catch {
+    setBootMessage('Impossibile connettersi al server');
+    await new Promise((resolve) => setTimeout(resolve, 700));
     toast('Cannot reach local server', 'error');
+  } finally {
+    hideBootLoader();
   }
 }
 

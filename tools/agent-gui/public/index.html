@@ -12,7 +12,7 @@
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body class="boot-loading">
     <div class="layout">
       <aside class="sidebar">
         <div class="sidebar-head">
@@ -203,6 +203,20 @@
         </div>
       </form>
     </dialog>
+
+    <div
+      id="boot-overlay"
+      class="boot-overlay"
+      role="alertdialog"
+      aria-modal="true"
+      aria-busy="true"
+      aria-labelledby="boot-message"
+    >
+      <div class="boot-overlay-card">
+        <div class="boot-spinner" aria-hidden="true"></div>
+        <p id="boot-message" class="boot-message">Avvio Agent Console…</p>
+      </div>
+    </div>
 
     <div id="toast" class="toast hidden" role="status"></div>
 

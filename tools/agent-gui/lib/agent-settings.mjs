@@ -4,6 +4,9 @@ import { loopDir } from './repo-utils.mjs';
 
 /** @typedef {'cursor' | 'claude' | 'codex'} AgentBackend */
 
+/** @type {readonly AgentBackend[]} */
+export const AGENT_BACKENDS = ['cursor', 'claude', 'codex'];
+
 export const DEFAULT_MODEL = {
   cursor: 'composer-2.5-fast',
   claude: 'sonnet',
