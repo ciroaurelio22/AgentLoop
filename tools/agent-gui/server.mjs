@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { ProgramWatcher } from './lib/program-watcher.mjs';
 import { QueueWatcher, readTaskSnapshot } from './lib/queue-watcher.mjs';
 import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
-import { runSetupChecks } from './lib/setup-check.mjs';
+import { runSetupChecks, probeInstalledProviders } from './lib/setup-check.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
 import { detectPackageManager, resolveAgentScriptForRepo } from './lib/agent-scripts.mjs';
 import { readAgentSettings, writeAgentSettings, resolveAgentBackend } from './lib/agent-settings.mjs';
@@ -153,9 +153,10 @@ function writeDraftPrompt({ taskId, title, taskRel, description, currentProgram 
   writeFileSync(draftPath, body, 'utf8');
 }
 
-function getState() {
+async function getState() {
   const autostartPath = repoRoot ? join(loopDir(repoRoot), 'autostart') : null;
   const agent = readAgentSettings(repoRoot);
+  const installedProviders = await probeInstalledProviders(repoRoot);
   return {
     repo: repoRoot,
     repoValid: repoRoot ? isValidRepo(repoRoot) : false,
@@ -163,6 +164,7 @@ function getState() {
     autostart: autostartPath ? existsSync(autostartPath) : false,
     agentBackend: agent.backend,
     model: agent.model,
+    installedProviders,
     agentRunning: activeAgent !== null && activeAgent.exitCode === null,
   };
 }
@@ -190,7 +192,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/state') {
     ensureRepo();
-    return sendJson(res, 200, getState());
+    return sendJson(res, 200, await getState());
   }
 
   if (req.method === 'GET' && url.pathname === '/api/agent/settings') {
@@ -206,14 +208,13 @@ async function handleApi(req, res, url) {
     if (!root) {
       return sendJson(res, 400, { error: 'Select a valid workspace' });
     }
-    const refresh = url.searchParams.get('refresh') === '1';
     const backendParam = String(url.searchParams.get('backend') ?? '').trim().toLowerCase();
     const backend =
-      backendParam === 'claude' || backendParam === 'cursor'
+      backendParam === 'claude' || backendParam === 'cursor' || backendParam === 'codex'
         ? backendParam
         : resolveAgentBackend(root);
     try {
-      const listed = await fetchAgentModels(root, { refresh, backend });
+      const listed = await fetchAgentModels(root, { backend });
       return sendJson(res, 200, listed);
     } catch (err) {
       return sendJson(res, 500, {
@@ -230,8 +231,15 @@ async function handleApi(req, res, url) {
     try {
       const body = await readBody(req);
       const backend = body.backend !== undefined ? String(body.backend).trim().toLowerCase() : undefined;
-      if (backend !== undefined && backend !== 'cursor' && backend !== 'claude') {
-        return sendJson(res, 400, { error: 'Provider must be cursor or claude' });
+      if (backend !== undefined && backend !== 'cursor' && backend !== 'claude' && backend !== 'codex') {
+        return sendJson(res, 400, { error: 'Provider must be cursor, claude, or codex' });
+      }
+      if (backend !== undefined) {
+        const installedProviders = await probeInstalledProviders(root);
+        const provider = installedProviders.find((p) => p.id === backend);
+        if (!provider?.installed) {
+          return sendJson(res, 400, { error: `${backend} CLI is not installed` });
+        }
       }
       const model = body.model !== undefined ? String(body.model).trim() : undefined;
       if (model !== undefined && !model) {
@@ -263,7 +271,7 @@ async function handleApi(req, res, url) {
       clearPrStatusCache();
       queueWatcher.setRepo(repoRoot);
       writeGuiPid();
-      return sendJson(res, 200, getState());
+      return sendJson(res, 200, await getState());
     } catch {
       return sendJson(res, 400, { error: 'Body JSON non valido' });
     }

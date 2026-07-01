@@ -37,37 +37,39 @@
               class="input input--path"
               placeholder="Workspace path…"
               spellcheck="false"
+              aria-label="Workspace path"
+              autocomplete="off"
             />
-            <button type="button" id="btn-set-repo" class="btn btn--secondary">Apply</button>
+            <button type="button" id="btn-set-repo" class="btn btn--secondary" title="Apply workspace path">Apply</button>
           </div>
         </header>
 
-        <section class="controls">
-          <div class="controls-id" id="task-id">TASK-001</div>
+        <section class="controls" aria-label="Task composer">
+          <div class="controls-id" id="task-id" aria-label="Task ID">TASK-001</div>
           <input
             id="task-title"
             type="text"
             class="input input--title"
-            placeholder="Task title"
+            placeholder="Task title — describe what to do"
+            aria-label="Task title"
+            autocomplete="off"
           />
           <div class="controls-actions">
             <button
               type="button"
               id="btn-create"
-              class="btn btn--secondary"
+              class="btn btn--primary"
               title="Load task template into Program (preview, not saved)"
             >
               Create
             </button>
             <div class="menu">
-              <button type="button" id="btn-more" class="btn btn--secondary btn--icon" title="Actions">···</button>
-              <div id="more-menu" class="menu-panel hidden">
-                <button type="button" data-action="save">Save program</button>
-                <button type="button" data-action="verify">Verify acceptance</button>
+              <button type="button" id="btn-more" class="btn btn--secondary btn--icon" title="More actions" aria-haspopup="menu" aria-expanded="false">···</button>
+              <div id="more-menu" class="menu-panel hidden" role="menu">
+                <button type="button" role="menuitem" data-action="draft-ai">Complete with AI</button>
+                <button type="button" role="menuitem" data-action="reload">Reload file</button>
                 <hr />
-                <button type="button" data-action="draft-ai">Complete with AI</button>
-                <button type="button" data-action="reload">Reload file</button>
-                <button type="button" data-action="new-id">New ID</button>
+                <button type="button" role="menuitem" data-action="new-id">New task</button>
               </div>
             </div>
           </div>
@@ -85,10 +87,30 @@
 
         <section class="panel panel--program">
           <div class="panel-head">
-            <h2 class="panel-title">Program</h2>
-            <div class="panel-meta">
-              <span id="program-file">—</span>
-              <span id="program-sync" class="sync-badge" data-state="idle">sync</span>
+            <div class="panel-head-left">
+              <h2 class="panel-title">Program</h2>
+              <div class="panel-meta">
+                <span id="program-file">—</span>
+                <span id="program-sync" class="sync-badge" data-state="idle">sync</span>
+              </div>
+            </div>
+            <div class="panel-head-actions">
+              <button
+                type="button"
+                id="btn-save"
+                class="btn btn--secondary btn--sm"
+                title="Save program to disk"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                id="btn-verify"
+                class="btn btn--secondary btn--sm"
+                title="Run acceptance criteria check"
+              >
+                Verify
+              </button>
             </div>
           </div>
           <div class="program-body">
@@ -103,8 +125,9 @@
               id="btn-program-ai"
               class="btn btn--ai btn--program-ai"
               title="Create task on disk and start AI agent"
+              aria-label="Start AI agent"
             >
-              AI
+              Run AI
             </button>
           </div>
         </section>
@@ -116,6 +139,7 @@
               <select id="agent-backend" class="input input--compact" disabled>
                 <option value="cursor">Cursor</option>
                 <option value="claude">Claude</option>
+                <option value="codex">Codex</option>
               </select>
             </label>
             <label class="agent-settings-field agent-settings-field--model">

@@ -16,6 +16,8 @@ const els = {
   taskId: $('#task-id'),
   taskTitle: $('#task-title'),
   btnCreate: $('#btn-create'),
+  btnSave: $('#btn-save'),
+  btnVerify: $('#btn-verify'),
   btnProgramAi: $('#btn-program-ai'),
   btnMore: $('#btn-more'),
   moreMenu: $('#more-menu'),
@@ -48,6 +50,8 @@ const state = {
   savingAgentSettings: false,
   loadingAgentModels: false,
   selectedModel: '',
+  /** @type {object[] | null} */
+  installedProviders: null,
 };
 
 let toastTimer = null;
@@ -112,6 +116,8 @@ async function api(path, options = {}) {
 function setBusy(busy) {
   state.agentRunning = busy;
   els.btnCreate.disabled = busy;
+  els.btnSave.disabled = busy;
+  els.btnVerify.disabled = busy;
   els.btnProgramAi.disabled = busy;
   els.btnSidebarNew.disabled = busy;
   setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !busy);
@@ -249,8 +255,12 @@ function escapeHtml(str) {
 async function refreshSetup() {
   try {
     const setup = await api('/api/setup');
+    state.installedProviders = setup.installedProviders ?? state.installedProviders;
     renderSetupChecklist(setup);
     setSetupBlocked(!setup.ready);
+    if (setup.installedProviders?.length) {
+      applyProviderOptions(setup.installedProviders, els.agentBackend.value);
+    }
     if (els.setupRepoPath && !setup.checks?.find((c) => c.id === 'workspace')?.ok) {
       if (els.repoPath.value.trim()) els.setupRepoPath.value = els.repoPath.value;
     }
@@ -410,8 +420,42 @@ function connectProgramWatch(taskId) {
   };
 }
 
+const PROVIDER_LABELS = {
+  cursor: 'Cursor',
+  claude: 'Claude',
+  codex: 'Codex',
+};
+
+function applyProviderOptions(providers, selectedBackend) {
+  if (!providers?.length) return { backend: selectedBackend ?? 'cursor', changed: false };
+
+  for (const option of els.agentBackend.options) {
+    const meta = providers.find((p) => p.id === option.value);
+    const installed = Boolean(meta?.installed);
+    option.disabled = !installed;
+    const label = PROVIDER_LABELS[option.value] ?? option.value;
+    option.textContent = installed ? label : `${label} (not installed)`;
+  }
+
+  let backend = selectedBackend ?? els.agentBackend.value ?? 'cursor';
+  const current = providers.find((p) => p.id === backend);
+  let changed = false;
+  if (!current?.installed) {
+    const firstInstalled = providers.find((p) => p.installed);
+    if (firstInstalled) {
+      backend = firstInstalled.id;
+      changed = backend !== (selectedBackend ?? els.agentBackend.value);
+    }
+  }
+
+  els.agentBackend.value = backend;
+  return { backend, changed };
+}
+
 function setAgentSettingsEnabled(enabled) {
-  els.agentBackend.disabled = !enabled || state.agentRunning || state.loadingAgentModels;
+  const hasInstalledProvider = state.installedProviders?.some((p) => p.installed) ?? true;
+  const allow = enabled && hasInstalledProvider;
+  els.agentBackend.disabled = !allow || state.agentRunning || state.loadingAgentModels;
   els.agentModel.disabled = !enabled || state.agentRunning || state.loadingAgentModels;
 }
 
@@ -454,7 +498,7 @@ function renderModelSelect(models = [], selectedId = '', { loading = false, erro
     : items[0].id;
 }
 
-async function loadAgentModels({ refresh = false, backend, selectedModel } = {}) {
+async function loadAgentModels({ backend, selectedModel } = {}) {
   if (!els.repoPath.value.trim()) {
     renderModelSelect([], '', { error: 'Select workspace first' });
     return null;
@@ -466,18 +510,12 @@ async function loadAgentModels({ refresh = false, backend, selectedModel } = {})
 
   try {
     const params = new URLSearchParams();
-    if (refresh) params.set('refresh', '1');
     if (backend) params.set('backend', backend);
     const query = params.toString();
     const data = await api(`/api/agent/models${query ? `?${query}` : ''}`);
     const modelId = selectedModel ?? state.selectedModel ?? data.models?.[0]?.id ?? '';
     state.selectedModel = modelId;
     renderModelSelect(data.models ?? [], modelId, { error: data.error });
-    if (data.error && data.source === 'fallback') {
-      /* fallback list is expected for Claude until CLI adds model list */
-    } else if (data.error) {
-      toast(data.error, 'warning');
-    }
     return data;
   } catch (err) {
     renderModelSelect([], selectedModel ?? state.selectedModel, { error: err.message });
@@ -490,11 +528,12 @@ async function loadAgentModels({ refresh = false, backend, selectedModel } = {})
 }
 
 function applyAgentSettings(data) {
-  if (!data) return;
+  if (!data) return { backend: 'cursor', changed: false };
   state.agentSettingsReady = Boolean(data.repoValid ?? data.backend);
-  els.agentBackend.value = data.agentBackend ?? data.backend ?? 'cursor';
+  const resolved = applyProviderOptions(data.installedProviders, data.agentBackend ?? data.backend ?? 'cursor');
   state.selectedModel = data.model ?? '';
   setAgentSettingsEnabled(Boolean(data.repoValid ?? data.repo));
+  return resolved;
 }
 
 async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChange = false } = {}) {
@@ -509,9 +548,10 @@ async function saveAgentSettings(patch, { quiet = false, resetModelOnBackendChan
       repoValid: true,
       agentBackend: data.backend,
       model: data.model,
+      installedProviders: state.installedProviders,
     });
     state.selectedModel = data.model;
-    await loadAgentModels({ refresh: true, backend: data.backend, selectedModel: data.model });
+    await loadAgentModels({ backend: data.backend, selectedModel: data.model });
     if (!quiet) toast('Agent settings saved', 'success');
     await refreshSetup();
     return data;
@@ -528,9 +568,17 @@ async function refreshState() {
   if (data.repo) els.repoPath.value = data.repo;
   state.taskId = data.nextTaskId;
   els.taskId.textContent = data.nextTaskId;
-  applyAgentSettings(data);
+  state.installedProviders = data.installedProviders ?? null;
+  const resolved = applyAgentSettings(data);
+  if (data.repoValid && resolved.changed) {
+    await saveAgentSettings(
+      { backend: resolved.backend, resetModelOnBackendChange: true },
+      { quiet: true },
+    );
+    return refreshState();
+  }
   if (data.repoValid) {
-    await loadAgentModels({ backend: data.agentBackend, selectedModel: data.model });
+    await loadAgentModels({ backend: resolved.backend, selectedModel: data.model });
   } else {
     renderModelSelect([], '', { error: 'Select workspace first' });
   }
@@ -685,7 +733,7 @@ async function applyWorkspaceFromGate() {
     return;
   }
   await refreshState();
-  await loadAgentModels({ refresh: true });
+  await loadAgentModels();
   connectTasksWatch();
   await loadTaskList();
   await refreshSetup();
@@ -851,7 +899,7 @@ function bindEvents() {
       return;
     }
     await refreshState();
-    await loadAgentModels({ refresh: true });
+    await loadAgentModels();
     connectTasksWatch();
     await loadTaskList();
     await refreshSetup();
@@ -862,30 +910,61 @@ function bindEvents() {
   els.btnSetupRecheck?.addEventListener('click', () => void refreshSetup());
 
   els.btnCreate.addEventListener('click', () => void previewCreate());
+  els.btnSave.addEventListener('click', () => void saveProgram());
+  els.btnVerify.addEventListener('click', () => void verifyAcceptance());
   els.btnProgramAi.addEventListener('click', () => void createAndDraft());
   els.btnEnableAutostart.addEventListener('click', () => void enableAutostart());
   els.btnSidebarNew.addEventListener('click', () => void prepareNewTask());
 
   els.btnMore.addEventListener('click', (e) => {
     e.stopPropagation();
-    els.moreMenu.classList.toggle('hidden');
+    const open = els.moreMenu.classList.toggle('hidden');
+    els.btnMore.setAttribute('aria-expanded', String(!open));
   });
 
-  document.addEventListener('click', () => els.moreMenu.classList.add('hidden'));
+  document.addEventListener('click', () => {
+    els.moreMenu.classList.add('hidden');
+    els.btnMore.setAttribute('aria-expanded', 'false');
+  });
 
   els.moreMenu.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     els.moreMenu.classList.add('hidden');
+    els.btnMore.setAttribute('aria-expanded', 'false');
     const action = btn.dataset.action;
-    if (action === 'save') void saveProgram();
-    else if (action === 'verify') void verifyAcceptance();
-    else if (action === 'new-id') void prepareNewTask();
+    if (action === 'new-id') void prepareNewTask();
     else if (action === 'draft-ai') void draftExisting();
     else if (action === 'reload') void reloadProgram();
   });
 
   els.programEditor.addEventListener('input', markDirty);
+
+  els.programEditor.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      void saveProgram();
+    }
+  });
+
+  els.taskTitle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!els.btnCreate.classList.contains('hidden') && !els.btnCreate.disabled) {
+        void previewCreate();
+      } else {
+        void els.btnProgramAi.click();
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !els.moreMenu.classList.contains('hidden')) {
+      els.moreMenu.classList.add('hidden');
+      els.btnMore.setAttribute('aria-expanded', 'false');
+      els.btnMore.focus();
+    }
+  });
 
   els.descForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -926,8 +1005,10 @@ function bindEvents() {
         { backend },
         { quiet: true, resetModelOnBackendChange: true },
       );
+      const label =
+        backend === 'claude' ? 'Claude' : backend === 'codex' ? 'Codex' : 'Cursor';
       if (data) {
-        toast(`Provider: ${backend === 'claude' ? 'Claude' : 'Cursor'}`, 'success');
+        toast(`Provider: ${label}`, 'success');
       }
     })();
   });

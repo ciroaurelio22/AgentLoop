@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { join, resolve } from 'node:path';
 import { loopDir } from './repo-utils.mjs';
 
-/** @typedef {'cursor' | 'claude'} AgentBackend */
+/** @typedef {'cursor' | 'claude' | 'codex'} AgentBackend */
 
 export const DEFAULT_MODEL = {
   cursor: 'composer-2.5-fast',
-  claude: 'claude-sonnet-4-6',
+  claude: 'sonnet',
+  codex: 'gpt-5.5',
 };
 
 /** @param {string | null | undefined} repoRoot */
@@ -17,13 +18,13 @@ export function resolveAgentBackend(repoRoot) {
     if (existsSync(backendPath)) {
       try {
         const line = readFileSync(backendPath, 'utf8').trim().toLowerCase();
-        if (line === 'claude' || line === 'cursor') return /** @type {AgentBackend} */ (line);
+        if (line === 'claude' || line === 'cursor' || line === 'codex') return /** @type {AgentBackend} */ (line);
       } catch {
         /* ignore */
       }
     }
   }
-  return fromEnv === 'claude' ? 'claude' : 'cursor';
+  return fromEnv === 'claude' ? 'claude' : fromEnv === 'codex' ? 'codex' : 'cursor';
 }
 
 /** @param {string | null | undefined} repoRoot @param {AgentBackend} [backend] */
@@ -67,7 +68,7 @@ export function writeAgentSettings(repoRoot, patch) {
   let backend = resolveAgentBackend(root);
 
   if (patch.backend !== undefined) {
-    backend = patch.backend === 'claude' ? 'claude' : 'cursor';
+    backend = patch.backend === 'claude' ? 'claude' : patch.backend === 'codex' ? 'codex' : 'cursor';
     writeFileSync(join(dir, 'backend'), `${backend}\n`, 'utf8');
     if (patch.resetModelOnBackendChange) {
       writeFileSync(join(dir, 'model'), `${DEFAULT_MODEL[backend]}\n`, 'utf8');

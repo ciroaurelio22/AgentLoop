@@ -16,15 +16,27 @@ Opens the browser at `http://127.0.0.1:9477`.
 - **Setup gate** — blocks the UI until workspace, autostart, and agent CLI are ready (`gh` is optional)
 - **Sidebar** — task queue; status badge + linked PR when `gh` is available
 - **Activity** — last 3 agent actions (read, write, tools, status)
-- **Program** — live-synced editor; updates when the agent modifies the file on disk
-- **Footer** — provider (Cursor / Claude) and model dropdown; models are fetched from the configured CLI (`agent models` / future `claude model list`)
+- **Program** — live-synced editor; updates when the agent modifies the file on disk. Header actions: **Save** (Ctrl+S), **Verify** (acceptance check), **Run AI** (start agent)
+- **More menu (···)** — Complete with AI, Reload file, New task
+- **Footer** — provider (Cursor / Claude / Codex) and model dropdown from the static catalog in `core/scripts/agent/lib/agent-model-catalog.mjs` (see doc links in that file)
+
+### Keyboard shortcuts
+
+- `Enter` in title — create task (or start AI if a task is loaded)
+- `Ctrl/Cmd + S` in editor — save program
+- `Ctrl + Enter` in AI dialog — confirm request
+- `Esc` — close the more menu
+
+### Theme
+
+The console follows the system theme automatically (light/dark) via `prefers-color-scheme`.
 
 ## Requirements
 
 - Node.js 22+
 - Valid Agent Loop workspace (`.agent-loop/`, `specs/agent-tasks/`, `scripts/agent/`)
 - Autostart file (`.agent-loop/autostart`)
-- Cursor CLI (`agent`) or Claude Code CLI (`claude`), installed and authenticated
+- Cursor CLI (`agent`) or Claude Code CLI (`claude`) or OpenAI Codex CLI (`codex`), installed and authenticated
 - [**GitHub CLI**](https://cli.github.com/) (`gh`, optional): PR badges in the task sidebar
 
 On first open, Agent Console shows a **setup gate** until all required checks pass. Optional items (e.g. `gh`) do not block the UI.

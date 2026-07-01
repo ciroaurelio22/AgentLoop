@@ -3,7 +3,7 @@
  * Run a coding agent CLI (Cursor or Claude Code) for GUI / automation.
  *
  * Env:
- *   AGENT_BACKEND=cursor|claude  (default: cursor)
+ *   AGENT_BACKEND=cursor|claude|codex  (default: cursor)
  *   AGENT_CLI=/path/to/binary    (override executable)
  *   AGENT_MODEL=...              (backend-specific model id)
  */
@@ -28,12 +28,14 @@ function parseArgs(argv) {
   }
   if (!out.task) {
     console.error(
-      'Usage: node run-agent.mjs --workspace <repo> --task specs/agent-tasks/TASK-001.md [--backend cursor|claude] [--model ...]',
+      'Usage: node run-agent.mjs --workspace <repo> --task specs/agent-tasks/TASK-001.md [--backend cursor|claude|codex] [--model ...]',
     );
     process.exit(2);
   }
   if (!out.model) {
-    out.model = out.backend === 'claude' ? 'claude-sonnet-4-6' : 'composer-2.5-fast';
+    if (out.backend === 'claude') out.model = 'sonnet';
+    else if (out.backend === 'codex') out.model = 'gpt-5.5';
+    else out.model = 'composer-2.5-fast';
   }
   return out;
 }
@@ -81,6 +83,21 @@ function buildClaudeArgs({ workspace, model, prompt }) {
   ];
 }
 
+function buildCodexArgs({ workspace, model, prompt }) {
+  return [
+    'exec',
+    '-m',
+    model,
+    '-C',
+    workspace,
+    '--sandbox',
+    'workspace-write',
+    '--json',
+    '--dangerously-bypass-approvals-and-sandbox',
+    prompt,
+  ];
+}
+
 function spawnAgent(agentPath, args, workspace, backend) {
   const isCmd = process.platform === 'win32' && agentPath.toLowerCase().endsWith('.cmd');
   const opts = {
@@ -109,13 +126,17 @@ function killProcessTree(pid) {
 }
 
 const { workspace, task, model, backend } = parseArgs(process.argv.slice(2));
-const agentPath = findAgentCli(backend === 'claude' ? 'claude' : 'cursor');
+const agentPath = findAgentCli(
+  backend === 'claude' ? 'claude' : backend === 'codex' ? 'codex' : 'cursor',
+);
 const taskRel = task.replace(/\\/g, '/');
 const prompt = buildPrompt(taskRel, workspace);
 const args =
   backend === 'claude'
     ? buildClaudeArgs({ workspace, model, prompt })
-    : buildCursorArgs({ workspace, model, prompt });
+    : backend === 'codex'
+      ? buildCodexArgs({ workspace, model, prompt })
+      : buildCursorArgs({ workspace, model, prompt });
 
 console.error(`[run-agent] backend: ${backend}`);
 console.error(`[run-agent] binary: ${agentPath}`);

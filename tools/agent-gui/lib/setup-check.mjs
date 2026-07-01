@@ -6,6 +6,9 @@ import { resolveAgentBackend } from './agent-settings.mjs';
 import { isValidRepo, loopDir } from './repo-utils.mjs';
 import { resolveAgentScriptForRepo } from './agent-scripts.mjs';
 
+/** @type {readonly ('cursor' | 'claude' | 'codex')[]} */
+export const AGENT_BACKENDS = ['cursor', 'claude', 'codex'];
+
 function runCommand(cmd, args, cwd) {
   return new Promise((resolveRun) => {
     const child = spawn(cmd, args, {
@@ -26,12 +29,13 @@ function runCommand(cmd, args, cwd) {
   });
 }
 
-/** @param {string | null} repoRoot @param {'cursor' | 'claude'} backend */
+/** @param {string | null} repoRoot @param {'cursor' | 'claude' | 'codex'} backend */
 async function loadAgentCliProbe(repoRoot, backend) {
   const scriptPath = resolveAgentScriptForRepo(repoRoot ?? process.cwd(), 'lib', 'agent-cli.mjs');
   if (!existsSync(scriptPath)) {
+    const binary = backend === 'claude' ? 'claude' : backend === 'codex' ? 'codex' : 'agent';
     return {
-      binary: backend === 'claude' ? 'claude' : 'agent',
+      binary,
       installed: false,
       authenticated: false,
       versionDetail: 'Agent scripts not found in this workspace.',
@@ -42,22 +46,38 @@ async function loadAgentCliProbe(repoRoot, backend) {
   return mod.probeAgentCli(backend, repoRoot ?? process.cwd());
 }
 
+/** @param {string | null} repoRoot */
+export async function probeInstalledProviders(repoRoot) {
+  return Promise.all(
+    AGENT_BACKENDS.map(async (id) => {
+      const cli = await loadAgentCliProbe(repoRoot, id);
+      return {
+        id,
+        installed: cli.installed,
+        authenticated: cli.authenticated,
+        binary: cli.binary,
+      };
+    }),
+  );
+}
+
 /**
  * @param {string | null} repoRoot
- * @returns {Promise<{ ready: boolean; backend: string; repo: string | null; checks: object[] }>}
+ * @returns {Promise<{ ready: boolean; backend: string; repo: string | null; checks: object[]; installedProviders: object[] }>}
  */
 export async function runSetupChecks(repoRoot) {
   const root = repoRoot ? resolve(repoRoot) : null;
   const backend = resolveAgentBackend(root);
-  /** @type {'cursor' | 'claude'} */
-  const backendId = backend === 'claude' ? 'claude' : 'cursor';
-  const cliName = backendId === 'claude' ? 'claude' : 'agent';
+  /** @type {'cursor' | 'claude' | 'codex'} */
+  const backendId = backend === 'claude' ? 'claude' : backend === 'codex' ? 'codex' : 'cursor';
+  const cliName = backendId === 'claude' ? 'claude' : backendId === 'codex' ? 'codex' : 'agent';
   const cwd = root ?? process.cwd();
 
   const workspaceOk = Boolean(root && isValidRepo(root));
   const autostartOk = workspaceOk && existsSync(join(loopDir(root), 'autostart'));
 
   const cli = await loadAgentCliProbe(root, backendId);
+  const installedProviders = await probeInstalledProviders(root);
 
   const ghVersion = await runCommand('gh', ['--version'], cwd);
   const ghInstalled = ghVersion.code === 0;
@@ -124,5 +144,6 @@ export async function runSetupChecks(repoRoot) {
     backend: backendId,
     repo: root,
     checks,
+    installedProviders,
   };
 }
