@@ -6,6 +6,8 @@ const STATUS_LABEL = {
   draft: 'Draft',
 };
 
+const DELETABLE = new Set(['pending', 'draft']);
+
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -16,16 +18,24 @@ function escapeHtml(str) {
 export class TaskSidebar {
   /**
    * @param {HTMLElement} root
-   * @param {{ onSelect: (taskId: string) => void }} opts
+   * @param {{ onSelect: (taskId: string) => void; onDelete?: (taskId: string) => void }} opts
    */
   constructor(root, opts) {
     this.root = root;
     this.onSelect = opts.onSelect;
+    this.onDelete = opts.onDelete;
     /** @type {string | null} */
     this.selectedId = null;
     /** @type {string | null} */
     this.activeTaskId = null;
     this.root.addEventListener('click', (e) => {
+      const deleteBtn = e.target.closest('[data-delete-id]');
+      if (deleteBtn) {
+        e.stopPropagation();
+        const id = deleteBtn.dataset.deleteId;
+        if (id) this.onDelete?.(id);
+        return;
+      }
       const btn = e.target.closest('[data-task-id]');
       if (!btn) return;
       const id = btn.dataset.taskId;
@@ -67,20 +77,28 @@ export class TaskSidebar {
         ]
           .filter(Boolean)
           .join(' ');
+        const deleteBtn = DELETABLE.has(status)
+          ? `<button type="button" class="task-item-delete" data-delete-id="${escapeHtml(id)}" title="Elimina task" aria-label="Elimina ${escapeHtml(id)}">×</button>`
+          : '';
         return `
-          <button type="button" class="${classes}" data-task-id="${escapeHtml(id)}" data-status="${escapeHtml(status)}">
-            <span class="task-item-top">
-              <span class="task-item-id">${escapeHtml(id)}</span>
-              <span class="task-status task-status--${escapeHtml(status)}">${escapeHtml(STATUS_LABEL[status] ?? status)}</span>
-            </span>
-            <span class="task-item-title">${escapeHtml(t.title)}</span>
-          </button>`;
+          <div class="task-item-wrap">
+            <button type="button" class="${classes}" data-task-id="${escapeHtml(id)}" data-status="${escapeHtml(status)}">
+              <span class="task-item-top">
+                <span class="task-item-id">${escapeHtml(id)}</span>
+                <span class="task-status task-status--${escapeHtml(status)}">${escapeHtml(STATUS_LABEL[status] ?? status)}</span>
+              </span>
+              <span class="task-item-title">${escapeHtml(t.title)}</span>
+            </button>
+            ${deleteBtn}
+          </div>`;
       })
       .join('');
 
     this.root.innerHTML = `
       <div class="sidebar-summary">${escapeHtml(summary || `${tasks.length} tasks`)}</div>
       <div class="task-list-items">${items}</div>`;
+
+    if (this.selectedId) this.select(this.selectedId);
   }
 
   select(taskId) {

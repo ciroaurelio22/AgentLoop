@@ -78,13 +78,46 @@ export class ActivityFeed {
     }
   }
 
-  finish(code) {
+  finish(code, { empty = false } = {}) {
+    if (code === 0 && empty) {
+      this.push({
+        type: 'status',
+        label: 'Nessuna attività — riprova',
+        detail: '',
+        status: 'error',
+      });
+      return;
+    }
     this.push({
       type: 'status',
       label: code === 0 ? 'Completato' : `Terminato (exit ${code})`,
       detail: '',
       status: code === 0 ? 'done' : 'error',
     });
+  }
+
+  exportState() {
+    return {
+      items: [...this.items.entries()],
+      order: [...this.order],
+    };
+  }
+
+  /** @param {{ items?: [string, object][]; order?: string[] } | null | undefined} saved */
+  importState(saved) {
+    if (!saved?.order?.length) {
+      this.clear();
+      return;
+    }
+    this.items = new Map(saved.items);
+    this.order = [...saved.order];
+    this.#render();
+  }
+
+  showPlaceholder(label) {
+    this.items.clear();
+    this.order = [];
+    this.root.innerHTML = `<div class="activity-empty">${escapeHtml(label)}</div>`;
   }
 
   #render() {

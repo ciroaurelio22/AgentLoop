@@ -11,12 +11,14 @@ import {
   mkdirSync,
   createReadStream,
   statSync,
+  unlinkSync,
 } from 'node:fs';
 import { join, extname, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ProgramWatcher } from './lib/program-watcher.mjs';
 import { QueueWatcher, readTaskSnapshot } from './lib/queue-watcher.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
+import { detectPackageManager } from '../../scripts/agent/lib/package-manager.mjs';
 import {
   DEFAULT_PORT,
   TASK_ID_RE,
@@ -95,6 +97,7 @@ function runCommand(cmd, args, cwd) {
 function writeDraftPrompt({ taskId, title, taskRel, description, currentProgram }) {
   if (!repoRoot) throw new Error('Repository non impostato');
   const draftPath = join(loopDir(repoRoot), 'gui-draft-prompt.md');
+  const pm = detectPackageManager(repoRoot);
   let body =
     `# Draft program — ${taskId}\n\n` +
     `## Task\n\n` +
@@ -108,7 +111,7 @@ function writeDraftPrompt({ taskId, title, taskRel, description, currentProgram 
     `2. Modifica **solo** \`${taskRel}\` — nessun altro file sorgente.\n` +
     `3. Compila tutte le sezioni del template program (Obiettivo, Vincoli, Scope, Acceptance, Verifica, Note).\n` +
     `4. Acceptance criteria: checklist \`- [ ]\` verificabili e specifiche.\n` +
-    `5. Vincoli: pnpm, diff minimi, no merge autonomo, test se tocchi codice.\n` +
+    `5. Vincoli: usa ${pm} (package manager del repo), diff minimi, no merge autonomo, test se tocchi codice.\n` +
     `6. Scrivi in **italiano**, tono operativo Karpathy-style.\n`;
   if (currentProgram?.trim()) {
     body += `\n## Bozza attuale\n\n\`\`\`markdown\n${currentProgram.trim().slice(0, 12000)}\n\`\`\`\n`;
@@ -220,6 +223,62 @@ async function handleApi(req, res, url) {
     return sendJson(res, 400, { error: 'Select a valid workspace' });
   }
 
+  const taskDeleteMatch = url.pathname.match(/^\/api\/tasks\/(TASK-\d+)$/i);
+  if (taskDeleteMatch && req.method === 'DELETE') {
+    const taskId = taskDeleteMatch[1].toUpperCase();
+    const programPath = join(repoRoot, 'specs', 'agent-tasks', `${taskId}.md`);
+    const queuePath = join(loopDir(repoRoot), 'queue.json');
+    const statePath = join(loopDir(repoRoot), 'state.json');
+
+    let queue = { tasks: [] };
+    if (existsSync(queuePath)) {
+      try {
+        queue = JSON.parse(readFileSync(queuePath, 'utf8'));
+      } catch {
+        return sendJson(res, 500, { error: 'queue.json non valido' });
+      }
+    }
+
+    const entry = (queue.tasks ?? []).find((t) => String(t.id).toUpperCase() === taskId);
+    const status = entry?.status ?? (existsSync(programPath) ? 'draft' : null);
+
+    if (!entry && !existsSync(programPath)) {
+      return sendJson(res, 404, { error: 'Task non trovato' });
+    }
+
+    if (status === 'in_progress') {
+      return sendJson(res, 409, { error: 'Impossibile eliminare un task in esecuzione' });
+    }
+    if (status === 'done' || status === 'blocked') {
+      return sendJson(res, 409, { error: `Impossibile eliminare un task ${status}` });
+    }
+
+    if (entry) {
+      queue.tasks = (queue.tasks ?? []).filter((t) => String(t.id).toUpperCase() !== taskId);
+      mkdirSync(dirname(queuePath), { recursive: true });
+      writeFileSync(queuePath, `${JSON.stringify(queue, null, 2)}\n`, 'utf8');
+    }
+
+    if (existsSync(programPath)) {
+      unlinkSync(programPath);
+    }
+
+    if (existsSync(statePath)) {
+      try {
+        const loopState = JSON.parse(readFileSync(statePath, 'utf8'));
+        if (String(loopState.activeTaskId ?? '').toUpperCase() === taskId) {
+          loopState.activeTaskId = null;
+          writeFileSync(statePath, `${JSON.stringify(loopState, null, 2)}\n`, 'utf8');
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    queueWatcher.notify();
+    return sendJson(res, 200, { ok: true, taskId });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/tasks/create') {
     try {
       const body = await readBody(req);
@@ -325,21 +384,6 @@ async function handleApi(req, res, url) {
     });
 
     return undefined;
-  }
-
-  if (req.method === 'POST' && url.pathname === '/api/agent/stop') {
-    if (activeAgent && activeAgent.exitCode === null) {
-      const pid = activeAgent.pid;
-      if (process.platform === 'win32' && pid) {
-        spawn('taskkill', ['/F', '/T', '/PID', String(pid)], {
-          stdio: 'ignore',
-          windowsHide: true,
-        });
-      } else {
-        activeAgent.kill('SIGTERM');
-      }
-    }
-    return sendJson(res, 200, { ok: true });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/agent/start') {

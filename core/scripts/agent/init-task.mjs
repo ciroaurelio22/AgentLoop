@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readQueue, writeQueue, branchName, findTask } from './lib/queue.mjs';
 import { defaultProgramPath } from './lib/program.mjs';
+import { fillProgramTemplate } from './lib/template-fill.mjs';
+import { pmRun, detectPackageManager } from './lib/package-manager.mjs';
 
 const [taskId, title, ...rest] = process.argv.slice(2);
 
@@ -33,11 +35,7 @@ if (findTask(queue, taskId)) {
 const templatePath = join(process.cwd(), 'specs/agent-tasks/_template.md');
 const branchSlug = taskId.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 const template = readFileSync(templatePath, 'utf8');
-const program = template
-  .replaceAll('{{TASK_ID}}', taskId)
-  .replaceAll('{{TITLE}}', title)
-  .replaceAll('{{BRANCH_SLUG}}', branchSlug)
-  .replaceAll('{{DATE}}', new Date().toISOString().slice(0, 10));
+const program = fillProgramTemplate(template, { taskId, title, branchSlug });
 
 writeFileSync(programPath, program);
 
@@ -59,5 +57,6 @@ console.log(`In coda: ${taskId} (priority ${priority}) → branch ${branchName(q
 console.log('');
 console.log('Prossimi passi:');
 console.log(`  1. Compila specs/agent-tasks/${taskId}.md (obiettivo, vincoli, acceptance)`);
-console.log(`  2. pnpm agent:next`);
+const pm = detectPackageManager();
+console.log(`  2. ${pmRun(pm, 'agent:next')}`);
 console.log('  3. Avvia Cloud/Background Agent');

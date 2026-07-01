@@ -21,7 +21,6 @@ const els = {
   programFile: $('#program-file'),
   programSync: $('#program-sync'),
   programEditor: $('#program-editor'),
-  btnStop: $('#btn-stop'),
   descDialog: $('#desc-dialog'),
   descForm: $('#desc-form'),
   descHeading: $('#desc-heading'),
@@ -50,6 +49,38 @@ let activityFeed = null;
 let taskSidebar = null;
 /** @type {object[]} */
 let lastTaskSnapshot = [];
+let loadTaskSeq = 0;
+/** @type {string | null} */
+let currentViewTaskId = null;
+/** @type {Map<string, { items: [string, object][]; order: string[] }>} */
+const activityByTask = new Map();
+
+const STATUS_LABEL = {
+  pending: 'Pending',
+  in_progress: 'Running',
+  done: 'Done',
+  blocked: 'Blocked',
+  draft: 'Draft',
+};
+
+function persistActivity(taskId) {
+  if (!taskId || !activityFeed) return;
+  const saved = activityFeed.exportState();
+  if (saved.order.length > 0) {
+    activityByTask.set(taskId, saved);
+  }
+}
+
+function showTaskActivity(taskId, meta) {
+  activityFeed = activityFeed ?? new ActivityFeed(els.activityFeed);
+  const saved = activityByTask.get(taskId);
+  if (saved?.order?.length) {
+    activityFeed.importState(saved);
+    return;
+  }
+  const status = STATUS_LABEL[meta?.status ?? 'pending'] ?? meta?.status ?? 'Pending';
+  activityFeed.showPlaceholder(`${taskId} · ${status}`);
+}
 
 function toast(message, type = 'info') {
   els.toast.textContent = message;
@@ -73,7 +104,6 @@ function setBusy(busy) {
   els.btnCreate.disabled = busy;
   els.btnProgramAi.disabled = busy;
   els.btnSidebarNew.disabled = busy;
-  els.btnStop.disabled = !busy;
 }
 
 function setCreateVisible(show) {
@@ -109,43 +139,63 @@ async function previewCreate() {
   }
 }
 
-async function ensureTaskPersisted() {
-  const taskId = state.taskId;
-  const title = els.taskTitle.value.trim();
-  if (!title) {
-    toast('Enter a title', 'warning');
-    return null;
-  }
+async function ensureProgramOnDisk(taskId, title) {
+  const id = taskId.toUpperCase();
   try {
-    await api(`/api/program/${taskId}`);
-    setCreateVisible(false);
-    return { taskId, title };
+    await api(`/api/program/${id}`);
+    return { taskId: id, title: title || id };
   } catch {
+    if (!title) {
+      toast('Enter a title', 'warning');
+      return null;
+    }
     try {
-      const program = els.programEditor.value;
       await api('/api/tasks/create', {
         method: 'POST',
-        body: JSON.stringify({ taskId, title }),
+        body: JSON.stringify({ taskId: id, title }),
       });
-      if (program.trim()) {
-        await api(`/api/program/${taskId}`, {
+      if (els.programEditor.value.trim()) {
+        await api(`/api/program/${id}`, {
           method: 'PUT',
-          body: JSON.stringify({ program }),
+          body: JSON.stringify({ program: els.programEditor.value }),
         });
       }
       const data = await refreshState();
       state.taskId = data.nextTaskId;
       els.taskId.textContent = data.nextTaskId;
-      setActiveProgram(taskId);
-      taskSidebar?.select(taskId);
+      setActiveProgram(id);
+      taskSidebar?.select(id);
       await loadTaskList();
       setCreateVisible(false);
-      return { taskId, title };
+      return { taskId: id, title };
     } catch (err) {
       toast(err.message, 'error');
       return null;
     }
   }
+}
+
+async function deleteTask(taskId) {
+  const id = taskId.toUpperCase();
+  const meta = lastTaskSnapshot.find((t) => t.id === id);
+  const label = meta?.title ? `${id} · ${meta.title}` : id;
+  if (!confirm(`Eliminare ${label}?`)) return;
+
+  try {
+    await api(`/api/tasks/${id}`, { method: 'DELETE' });
+    activityByTask.delete(id);
+    if (state.activeProgramId === id) {
+      await prepareNewTask();
+    }
+    await loadTaskList();
+    toast(`Eliminato ${id}`, 'success');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function ensureTaskPersisted() {
+  return ensureProgramOnDisk(state.taskId, els.taskTitle.value.trim());
 }
 
 function setAutostart(enabled) {
@@ -237,17 +287,36 @@ function connectTasksWatch() {
 
 async function loadTask(taskId) {
   const id = taskId.toUpperCase();
+  const seq = ++loadTaskSeq;
+
+  if (currentViewTaskId && currentViewTaskId !== id) {
+    persistActivity(currentViewTaskId);
+  }
+  currentViewTaskId = id;
+
   taskSidebar?.select(id);
 
   const meta = lastTaskSnapshot.find((t) => t.id === id);
   if (meta?.title) els.taskTitle.value = meta.title;
+  els.taskId.textContent = id;
+  showTaskActivity(id, meta);
+
+  state.dirty = false;
 
   try {
     const data = await api(`/api/program/${id}`);
+    if (seq !== loadTaskSeq) return;
     applyProgramContent(data.program);
     setActiveProgram(id);
   } catch {
-    toast('Program not found', 'warning');
+    if (seq !== loadTaskSeq) return;
+    applyProgramContent('');
+    state.diskContent = '';
+    state.activeProgramId = id;
+    els.programFile.textContent = `${id}.md`;
+    setSyncBadge('draft');
+    connectProgramWatch(id);
+    setCreateVisible(false);
   }
 }
 
@@ -270,6 +339,7 @@ function connectProgramWatch(taskId) {
     try {
       const data = JSON.parse(ev.data);
       if (data.program === undefined) return;
+      if (data.taskId && data.taskId.toUpperCase() !== state.activeProgramId) return;
       setSyncBadge('syncing');
       const applied = applyProgramContent(data.program, { fromDisk: true });
       if (applied) {
@@ -315,6 +385,8 @@ function askDescription({ heading, subtitle, ai = false }) {
 }
 
 async function prepareNewTask() {
+  if (currentViewTaskId) persistActivity(currentViewTaskId);
+  currentViewTaskId = null;
   await refreshState();
   els.taskTitle.value = '';
   els.programEditor.value = '';
@@ -324,6 +396,7 @@ async function prepareNewTask() {
   els.programFile.textContent = '—';
   setSyncBadge('idle');
   taskSidebar?.select(null);
+  activityFeed?.showPlaceholder('Select a task or create a new one');
   if (watchSource) {
     watchSource.close();
     watchSource = null;
@@ -425,18 +498,16 @@ async function enableAutostart() {
   }
 }
 
-async function stopAgent() {
-  try {
-    await api('/api/agent/stop', { method: 'POST', body: '{}' });
-  } catch (err) {
-    toast(err.message, 'error');
-  }
-}
-
 async function startAgent({ taskId, title, description }) {
+  const id = taskId.toUpperCase();
+  currentViewTaskId = id;
+  taskSidebar?.select(id);
+  els.taskId.textContent = id;
+
   activityFeed = new ActivityFeed(els.activityFeed);
   activityFeed.clear();
   activityFeed.push({ type: 'status', label: 'Starting agent…', status: 'running' });
+  activityByTask.set(id, activityFeed.exportState());
   setActiveProgram(taskId);
   setBusy(true);
   setStatus('Running', 'running');
@@ -466,17 +537,28 @@ async function startAgent({ taskId, title, description }) {
   const decoder = new TextDecoder();
   let buffer = '';
 
+  let sawActivity = false;
+
   const handleEvent = (event, data) => {
     if (event === 'chunk') {
+      if (['tool', 'session', 'assistant', 'meta'].includes(data.kind)) {
+        sawActivity = true;
+      }
       activityFeed?.fromChunk(data);
+      activityByTask.set(id, activityFeed.exportState());
       setStatus('Running', 'running');
     } else if (event === 'done') {
-      activityFeed?.finish(data.code);
+      const empty = data.code === 0 && !sawActivity;
+      activityFeed?.finish(data.code, { empty });
+      activityByTask.set(id, activityFeed.exportState());
       setBusy(false);
-      if (data.code === 0) {
+      if (data.code === 0 && !empty) {
         setStatus('Done', 'done');
         if (data.program) applyProgramContent(data.program, { fromDisk: !state.dirty });
         toast('Program ready — review and verify', 'success');
+      } else if (data.code === 0 && empty) {
+        setStatus('Empty run', 'error');
+        toast('Agent terminato senza attività — riprova', 'warning');
       } else {
         setStatus(`Error ${data.code}`, 'error');
         toast('Agent failed', 'error');
@@ -550,6 +632,10 @@ async function draftExisting() {
   } else {
     taskId = parseTaskIdFromEditor();
     title = title || taskId;
+    const persisted = await ensureProgramOnDisk(taskId, title);
+    if (!persisted) return;
+    taskId = persisted.taskId;
+    title = persisted.title;
   }
 
   const description = await askDescription({
@@ -580,7 +666,6 @@ function bindEvents() {
   els.btnProgramAi.addEventListener('click', () => void createAndDraft());
   els.btnEnableAutostart.addEventListener('click', () => void enableAutostart());
   els.btnSidebarNew.addEventListener('click', () => void prepareNewTask());
-  els.btnStop.addEventListener('click', () => void stopAgent());
 
   els.btnMore.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -599,7 +684,6 @@ function bindEvents() {
     else if (action === 'new-id') void prepareNewTask();
     else if (action === 'draft-ai') void draftExisting();
     else if (action === 'reload') void reloadProgram();
-    else if (action === 'stop-agent') void stopAgent();
   });
 
   els.programEditor.addEventListener('input', markDirty);
@@ -641,6 +725,7 @@ async function init() {
   activityFeed = new ActivityFeed(els.activityFeed);
   taskSidebar = new TaskSidebar(els.taskList, {
     onSelect: (id) => void loadTask(id),
+    onDelete: (id) => void deleteTask(id),
   });
   bindEvents();
   try {
@@ -652,6 +737,8 @@ async function init() {
     const tasks = await loadTaskList();
     if (tasks?.tasks?.length === 1) {
       await loadTask(tasks.tasks[0].id);
+    } else {
+      activityFeed?.showPlaceholder('Select a task from the sidebar');
     }
     if (!els.repoPath.value.trim()) {
       toast('Set workspace path to begin', 'warning');

@@ -3,6 +3,7 @@
   "hooks": {
     "sessionStart": [
       { "command": "node .cursor/hooks/ensure-gui.mjs" },
+      { "command": "node .cursor/hooks/agent-update-check.mjs" },
       { "command": "node .cursor/hooks/agent-session-start.mjs" }
     ],
     "beforeShellExecution": [{ "command": "node .cursor/hooks/guard-shell.mjs" }],

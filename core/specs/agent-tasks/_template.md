@@ -1,7 +1,7 @@
 # {{TASK_ID}} — {{TITLE}}
 
 > **program.md** — instructions for the coding agent (Karpathy-style).  
-> Complete all sections before `pnpm agent:register {{TASK_ID}}`.
+> Complete all sections before `{{AGENT_REGISTER_CMD}}`.
 
 ## Objective
 
@@ -36,9 +36,9 @@
 <!-- Commands that must pass (in addition to automatic loop verify) -->
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
+{{PM}} run lint
+{{PM}} run typecheck
+{{PM}} run test
 ```
 
 ## Notes

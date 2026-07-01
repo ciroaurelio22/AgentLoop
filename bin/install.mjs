@@ -19,6 +19,7 @@ import {
 } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { detectPackageManager } from '../core/scripts/agent/lib/package-manager.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const KIT_ROOT = resolve(__dirname, '..');
@@ -33,6 +34,8 @@ const AGENT_SCRIPTS = {
   'agent:done': 'node scripts/agent/done.mjs',
   'agent:gui': 'node tools/agent-gui/server.mjs',
   'agent:gui:ensure': 'node scripts/agent/ensure-gui.mjs',
+  'agent:update': 'node scripts/agent/update.mjs',
+  'agent:check-update': 'node scripts/agent/check-update.mjs',
 };
 
 function parseArgs(argv) {
@@ -64,14 +67,15 @@ function parseArgs(argv) {
   return out;
 }
 
-function copyDir(src, dest, { force = false } = {}) {
+function copyDir(src, dest, { force = false, skip = () => false } = {}) {
   if (!existsSync(src)) return;
   mkdirSync(dest, { recursive: true });
   for (const name of readdirSync(src)) {
+    if (skip(name)) continue;
     const from = join(src, name);
     const to = join(dest, name);
     if (statSync(from).isDirectory()) {
-      copyDir(from, to, { force });
+      copyDir(from, to, { force, skip });
     } else if (force || !existsSync(to)) {
       cpSync(from, to);
     }
@@ -106,9 +110,11 @@ function appendSnippet(targetFile, snippetPath, marker) {
 }
 
 function installCore(targetRoot, force) {
+  const skipUserTask = (name) => force && /^TASK-\d+\.md$/i.test(name);
   copyDir(join(KIT_ROOT, 'core', 'scripts', 'agent'), join(targetRoot, 'scripts', 'agent'), { force });
   copyDir(join(KIT_ROOT, 'core', 'specs', 'agent-tasks'), join(targetRoot, 'specs', 'agent-tasks'), {
     force,
+    skip: skipUserTask,
   });
 
   const loopDest = join(targetRoot, '.agent-loop');
@@ -116,12 +122,32 @@ function installCore(targetRoot, force) {
   for (const file of ['queue.json', 'scratchpad.md', 'README.md']) {
     const src = join(KIT_ROOT, 'core', 'agent-loop', file);
     const dest = join(loopDest, file);
+    const protectUserData = force && (file === 'queue.json' || file === 'scratchpad.md');
+    if (protectUserData && existsSync(dest)) continue;
     if (force || !existsSync(dest)) cpSync(src, dest);
+  }
+
+  const versionSrc = join(KIT_ROOT, 'VERSION');
+  const versionDest = join(loopDest, 'kit-version');
+  if (existsSync(versionSrc)) {
+    if (force || !existsSync(versionDest)) cpSync(versionSrc, versionDest);
   }
 
   const cfgExample = join(KIT_ROOT, 'core', 'agent-loop.config.example.json');
   const cfgDest = join(targetRoot, 'agent-loop.config.json');
-  if (!existsSync(cfgDest)) cpSync(cfgExample, cfgDest);
+  if (!existsSync(cfgDest)) {
+    cpSync(cfgExample, cfgDest);
+  } else if (force) {
+    try {
+      const cfg = JSON.parse(readFileSync(cfgDest, 'utf8'));
+      if (cfg.verify?.packageManager === 'pnpm') {
+        cfg.verify.packageManager = 'auto';
+        writeFileSync(cfgDest, `${JSON.stringify(cfg, null, 2)}\n`);
+      }
+    } catch {
+      /* keep existing config */
+    }
+  }
 
   mergePackageJson(targetRoot);
 }
@@ -130,6 +156,13 @@ function installCursor(targetRoot, force) {
   const hooksDest = join(targetRoot, '.cursor', 'hooks');
   copyDir(join(KIT_ROOT, 'adapters', 'cursor', 'hooks'), hooksDest, { force });
   cpSync(join(KIT_ROOT, 'adapters', 'cursor', 'hooks.json'), join(targetRoot, '.cursor', 'hooks.json'));
+  installSkills(targetRoot, force);
+}
+
+function installSkills(targetRoot, force) {
+  const skillsSrc = join(KIT_ROOT, 'adapters', 'cursor', 'skills');
+  const skillsDest = join(targetRoot, '.cursor', 'skills');
+  copyDir(skillsSrc, skillsDest, { force });
 }
 
 function installClaude(targetRoot) {
@@ -158,8 +191,11 @@ if (opts.cursor) installCursor(target, opts.force);
 if (opts.claude) installClaude(target);
 if (opts.gui) installGui(target, opts.force);
 
+const detectedPm = detectPackageManager(target);
+console.log(`\nDetected package manager: ${detectedPm} (verify.packageManager: auto)`);
 console.log('\nDone. Next steps:');
 console.log('  1. node -e "require(\'node:fs\').mkdirSync(\'.agent-loop\',{recursive:true}); require(\'node:fs\').writeFileSync(\'.agent-loop/autostart\',\'\')"');
 console.log('  2. Edit agent-loop.config.json   # verify + branch defaults');
 console.log('  3. pnpm agent:init TASK-001 "First task"');
 console.log('  4. Install Cursor CLI (agent) or Claude Code CLI (claude) — see README.md');
+console.log('  5. Cursor skills installed: .cursor/skills/uninstall, .cursor/skills/update');

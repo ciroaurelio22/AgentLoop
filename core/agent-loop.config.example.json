@@ -6,8 +6,14 @@
     "baseBranch": "main"
   },
   "verify": {
-    "packageManager": "pnpm",
+    "packageManager": "auto",
     "mode": "root",
     "packages": {}
+  },
+  "updateCheck": {
+    "enabled": true,
+    "intervalDays": 7,
+    "branch": "master",
+    "repo": "ciroaurelio22/AgentLoop"
   }
 }

@@ -164,14 +164,43 @@ body {
   flex-direction: column;
 }
 
+.task-item-wrap {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+
+.task-item-delete {
+  flex-shrink: 0;
+  width: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+
+.task-item-wrap:hover .task-item-delete {
+  opacity: 1;
+}
+
+.task-item-delete:hover {
+  color: var(--err);
+  background: #fef2f2;
+}
+
 .task-item {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 10px 14px;
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
   background: transparent;
   text-align: left;
   cursor: pointer;

@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { fillProgramTemplate } from '../../scripts/agent/lib/template-fill.mjs';
 
 /** @param {string} repoRoot @param {string} taskId @param {string} title */
 export function fillTaskTemplate(repoRoot, taskId, title) {
@@ -9,9 +10,5 @@ export function fillTaskTemplate(repoRoot, taskId, title) {
   }
   const template = readFileSync(templatePath, 'utf8');
   const branchSlug = taskId.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  return template
-    .replaceAll('{{TASK_ID}}', taskId)
-    .replaceAll('{{TITLE}}', title)
-    .replaceAll('{{BRANCH_SLUG}}', branchSlug)
-    .replaceAll('{{DATE}}', new Date().toISOString().slice(0, 10));
+  return fillProgramTemplate(template, { taskId, title, branchSlug, root: repoRoot });
 }

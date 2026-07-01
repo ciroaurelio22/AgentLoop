@@ -2,6 +2,7 @@
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolvePackageManager, verifyCommand } from './lib/package-manager.mjs';
 
 const ROOT = process.cwd();
 const runTests = !process.argv.includes('--no-test');
@@ -9,12 +10,12 @@ const CONFIG_PATH = join(ROOT, 'agent-loop.config.json');
 
 function loadConfig() {
   if (!existsSync(CONFIG_PATH)) {
-    return { verify: { packageManager: 'pnpm', mode: 'root' } };
+    return { verify: { packageManager: 'auto', mode: 'root' } };
   }
   try {
     return JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
-    return { verify: { packageManager: 'pnpm', mode: 'root' } };
+    return { verify: { packageManager: 'auto', mode: 'root' } };
   }
 }
 
@@ -69,10 +70,6 @@ function touchedPackages(files, cfg) {
   return ['.'];
 }
 
-function pm(cfg) {
-  return cfg.verify?.packageManager ?? 'pnpm';
-}
-
 function run(cmd) {
   try {
     execSync(cmd, { cwd: ROOT, encoding: 'utf8', stdio: 'pipe' });
@@ -95,22 +92,19 @@ if (packages.length === 0) {
 
 const failures = [];
 const steps = runTests ? ['lint', 'typecheck', 'test'] : ['lint', 'typecheck'];
-const manager = pm(cfg);
+const manager = resolvePackageManager(cfg, ROOT);
 
 for (const pkg of packages) {
   for (const step of steps) {
-    const cmd =
-      pkg === '.'
-        ? `${manager} run ${step}`
-        : `${manager} --filter ${pkg} run ${step}`;
+    const cmd = verifyCommand(manager, pkg, step);
     const err = run(cmd);
-    if (err) failures.push({ step, package: pkg, output: err });
+    if (err) failures.push({ step, package: pkg, command: cmd, output: err });
   }
 }
 
 if (failures.length) {
-  console.log(JSON.stringify({ ok: false, packages, failures }, null, 2));
+  console.log(JSON.stringify({ ok: false, packages, packageManager: manager, failures }, null, 2));
   process.exit(1);
 }
 
-console.log(JSON.stringify({ ok: true, packages, steps }));
+console.log(JSON.stringify({ ok: true, packages, packageManager: manager, steps }));

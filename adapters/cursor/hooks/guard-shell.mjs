@@ -20,7 +20,7 @@ const blockedPatterns = [
 ];
 
 const denyMessage =
-  'Comando bloccato dalla policy Vigila81. Usa solo pnpm nel monorepo e non forzare push o comandi distruttivi.';
+  'Comando bloccato dalla policy agent-loop. Usa il package manager del repo e non forzare push o comandi distruttivi.';
 
 for (const pattern of blockedPatterns) {
   if (pattern.test(command)) {

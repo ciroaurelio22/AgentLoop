@@ -17,6 +17,7 @@ Vague idea → program.md → coding agent → PR → human review → merge
 | `scripts/agent/` | CLI: init, next, verify, acceptance |
 | `tools/agent-gui/` | Optional web console (Create, Program editor, AI button) |
 | `.cursor/hooks/` | Optional Cursor IDE adapter (auto-inject + verify on stop) |
+| `.cursor/skills/uninstall`, `update` | Cursor skills to remove or update the kit in this repo |
 | `CLAUDE.md` snippet | Claude Code adapter (manual or headless) |
 
 ## Requirements
@@ -45,7 +46,7 @@ pnpm agent:next
 
 Flags:
 
-- `--cursor` — copy Cursor hooks to `.cursor/hooks/`
+- `--cursor` — copy Cursor hooks to `.cursor/hooks/` and skills to `.cursor/skills/`
 - `--claude` — append agent-loop section to `CLAUDE.md` / `AGENTS.md`
 - `--gui` — copy web console to `tools/agent-gui/`
 - `--all` — all of the above (default if no adapter flags passed)
@@ -62,7 +63,7 @@ Edit `agent-loop.config.json` in your repo root:
     "baseBranch": "main"
   },
   "verify": {
-    "packageManager": "pnpm",
+    "packageManager": "auto",
     "mode": "root",
     "packages": {
       "apps/web/": "@myapp/web",
@@ -72,7 +73,9 @@ Edit `agent-loop.config.json` in your repo root:
 }
 ```
 
-- **`mode: "root"`** — runs `pnpm run lint` etc. at repo root (single-package repos).
+- **`packageManager: "auto"`** (default) — detected at verify time from lockfiles or `package.json#packageManager`. Pin only if needed (`pnpm`, `npm`, `yarn`, `bun`).
+- Check detection: `node scripts/agent/detect-pm.mjs`
+- **`mode: "root"`** — runs `<pm> run lint` etc. at repo root (single-package repos).
 - **`packages`** — path prefix → package name for monorepos (see example).
 
 ## Daily workflow
@@ -161,6 +164,7 @@ your-repo/
 ├── tools/agent-gui/       # optional
 ├── agent-loop.config.json
 ├── .cursor/hooks/         # optional (Cursor)
+├── .cursor/skills/        # optional — uninstall, update
 └── CLAUDE.md              # optional snippet appended
 ```
 
@@ -223,11 +227,15 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
    node -e "require('node:fs').mkdirSync('.agent-loop',{recursive:true}); require('node:fs').writeFileSync('.agent-loop/autostart','')"
    ```
 
-4. **Configure verify** — create or update `agent-loop.config.json`:
-   - Detect monorepo layout (`apps/*`, `packages/*`) or single package.
-   - Set `verify.packageManager` to what this repo uses (pnpm/npm/yarn).
-   - Map path prefixes to package names in `verify.packages`, or use `"mode": "root"` for single-package repos.
-   - Set `defaults.baseBranch` to this repo's main branch (`main` or `master`).
+4. **Detect package manager** — inspect the repo (do not assume pnpm):
+   ```bash
+   node scripts/agent/detect-pm.mjs
+   ```
+   - Lockfiles: `pnpm-lock.yaml` → pnpm, `yarn.lock` → yarn, `package-lock.json` → npm, `bun.lockb` → bun
+   - Leave `verify.packageManager` as **`"auto"`** in `agent-loop.config.json` unless the repo requires a pinned value
+   - Set `verify.packageManager` to what this repo uses only when auto-detection is wrong
+   - Map path prefixes to package names in `verify.packages`, or use `"mode": "root"` for single-package repos
+   - Set `defaults.baseBranch` to this repo's main branch (`main` or `master`)
 
 5. **Adapt the program template** — edit `specs/agent-tasks/_template.md`:
    - Branch naming (`agent/{{BRANCH_SLUG}}` → PR on correct base branch).
@@ -239,16 +247,20 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
    - Re-run `agent --version` or `claude --version` and confirm the chosen backend works before smoke tests.
 
 7. **Merge package.json scripts** — confirm these exist:
-   - `agent:init`, `agent:next`, `agent:verify`, `agent:acceptance`, `agent:status`, `agent:gui`, `agent:gui:ensure`
+   - `agent:init`, `agent:next`, `agent:verify`, `agent:acceptance`, `agent:status`, `agent:gui`, `agent:gui:ensure`, `agent:update`, `agent:check-update`
 
-8. **Smoke test** (with the backend chosen in step 0):
+8. **Confirm Cursor skills** (installed with `--cursor` / `--all`):
+   - `.cursor/skills/uninstall/SKILL.md` — remove agent-loop from this repo
+   - `.cursor/skills/update/SKILL.md` — pull latest kit from GitHub without losing queue/tasks
+
+9. **Smoke test** (with the backend chosen in step 0):
    ```bash
    pnpm agent:init TASK-001 "Agent loop smoke test"
    pnpm agent:status
    pnpm agent:next --json
    ```
 
-9. **Document for the team** — add a short "Agent loop" section to README or AGENTS.md with:
+10. **Document for the team** — add a short "Agent loop" section to README or AGENTS.md with:
    - Chosen backend and how to set `AGENT_BACKEND=cursor|claude` (GUI + `run-agent.mjs`)
    - How to create a task (`pnpm agent:init`)
    - How to start the agent (`pnpm agent:next` or GUI)
@@ -269,8 +281,52 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
 - [ ] `pnpm agent:status` runs without error
 - [ ] `agent-loop.config.json` matches this repo layout
 - [ ] Chosen CLI (`agent` or `claude`) is installed and authenticated
+- [ ] `.cursor/skills/uninstall` and `.cursor/skills/update` exist (Cursor projects)
 - [ ] Optional: `pnpm agent:gui` starts on port 9477
 ````
+## Update / uninstall
+
+**Update** from GitHub (keeps queue and task programs):
+
+```bash
+pnpm agent:update
+```
+
+Or ask Cursor Agent to use the **agent-loop-update** skill.
+
+**Uninstall**:
+
+```bash
+node /path/to/AgentLoop/bin/uninstall.mjs --target .
+node /path/to/AgentLoop/bin/uninstall.mjs --target . --keep-data   # keep queue + programs
+```
+
+Or ask Cursor Agent to use the **agent-loop-uninstall** skill.
+
+### Update check (automatic, throttled)
+
+The hook `agent-update-check` runs on Agent session start but hits GitHub **at most once every 7 days** (not every session). It compares `.agent-loop/kit-version` with [`VERSION`](https://github.com/ciroaurelio22/AgentLoop/blob/master/VERSION) on GitHub.
+
+```bash
+pnpm agent:check-update          # respects interval
+pnpm agent:check-update --force  # check now
+pnpm agent:check-update --snooze 14
+pnpm agent:check-update --dismiss
+```
+
+Configure in `agent-loop.config.json`:
+
+```json
+"updateCheck": {
+  "enabled": true,
+  "intervalDays": 7,
+  "branch": "master",
+  "repo": "ciroaurelio22/AgentLoop"
+}
+```
+
+When you release a new kit version, bump the root **`VERSION`** file in this repo.
+
 ## Contributing
 
 This kit is extracted from production use. PRs welcome for:
@@ -282,3 +338,15 @@ This kit is extracted from production use. PRs welcome for:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Star history
+
+Grafico aggiornato in tempo reale via [Star History](https://star-history.com) (dati GitHub).
+
+<a href="https://www.star-history.com/#ciroaurelio22/AgentLoop&type=date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ciroaurelio22/AgentLoop&type=date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ciroaurelio22/AgentLoop&type=date" />
+    <img alt="Andamento star GitHub — AgentLoop" src="https://api.star-history.com/chart?repos=ciroaurelio22/AgentLoop&type=date" />
+  </picture>
+</a>
