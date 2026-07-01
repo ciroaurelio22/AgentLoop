@@ -34,6 +34,7 @@ import {
   resolveStartupRepo,
   saveConfig,
 } from './lib/repo-utils.mjs';
+import { readKitVersion } from './lib/kit-version.mjs';
 import { parseStreamLine } from './lib/stream-parser.mjs';
 import {
   setAgentAskBroadcaster,
@@ -211,6 +212,7 @@ function getState() {
     model: agent.model,
     installedProviders: getInstalledProviders(),
     agentRunning: activeAgent !== null && activeAgent.exitCode === null,
+    kitVersion: readKitVersion(repoRoot),
   };
 }
 

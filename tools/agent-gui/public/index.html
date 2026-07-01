@@ -27,14 +27,17 @@
 
       <div class="main">
         <header class="topbar">
-          <button
-            type="button"
-            id="btn-guide"
-            class="btn btn--secondary btn--sm btn--guide"
-            title="How Agent Loop works"
-          >
-            How it works
-          </button>
+          <div class="topbar-left">
+            <button
+              type="button"
+              id="btn-guide"
+              class="btn btn--secondary btn--sm btn--guide"
+              title="How Agent Loop works"
+            >
+              How it works
+            </button>
+            <span id="kit-version" class="kit-version" title="Agent Loop kit version">…</span>
+          </div>
           <div class="topbar-workspace">
             <span
               id="repo-path"
@@ -223,27 +226,83 @@
         </div>
 
         <div class="guide-body" data-guide-panel="en">
-          <p class="guide-lead">Agent Loop keeps a task queue in your repo. The console is for planning. The coding agent runs in Cursor, Claude Code, or Codex.</p>
+          <p class="guide-lead">Agent Loop keeps a task queue in your repo. Use this console to plan tasks. Run work from a coding agent in Cursor, Claude Code, or Codex.</p>
           <ol class="guide-steps">
-            <li>Create a task: title, edit the program, click <strong>Save</strong>.</li>
-            <li>Complete setup and enable <strong>autostart</strong> if prompted.</li>
-            <li>Open a <strong>new</strong> agent session in this workspace (Cursor, Claude, or Codex).</li>
-            <li>Send a short message, for example: <code>go</code> or <code>start</code>.</li>
-            <li>The agent reads pending tasks and works through them. No long brief needed.</li>
+            <li>Create a task: set a title, edit the program, click <strong>Save</strong>.</li>
+            <li>Finish setup and turn on <strong>autostart</strong> if the gate asks for it.</li>
+            <li>Open a <strong>new</strong> agent chat in this workspace.</li>
+            <li>Send a short message. Examples below.</li>
+            <li>The agent loads the queue, takes the next pending task, and executes it.</li>
           </ol>
-          <p class="guide-note">Use <strong>Run AI</strong> in this console when you want the agent to draft or edit a program from here.</p>
+
+          <div class="guide-examples">
+            <h3 class="guide-examples-title">Examples</h3>
+
+            <p class="guide-examples-label">1. Create a task in the console</p>
+            <ul class="guide-examples-list">
+              <li>Title: <code>Improve mobile UX</code></li>
+              <li>Program file: <code>specs/agent-tasks/TASK-002.md</code></li>
+              <li>Fill Objective and Acceptance (<code>- [ ]</code> checkboxes), then <strong>Save</strong></li>
+            </ul>
+
+            <p class="guide-examples-label">2. Messages you can send in a new agent chat</p>
+            <ul class="guide-examples-list guide-examples-list--inline">
+              <li><code>go</code></li>
+              <li><code>start</code></li>
+              <li><code>next task</code></li>
+              <li><code>vai</code></li>
+            </ul>
+            <p class="guide-examples-hint">Any short nudge works. You do not need to paste the full program.</p>
+
+            <p class="guide-examples-label">3. What the agent does</p>
+            <ul class="guide-examples-list">
+              <li>Reads <code>.agent-loop/queue.json</code></li>
+              <li>Opens <code>specs/agent-tasks/TASK-002.md</code></li>
+              <li>Implements the scope, runs lint/tests if needed, ticks acceptance items</li>
+            </ul>
+          </div>
+
+          <p class="guide-note"><strong>Run AI</strong> here when you want the agent to draft or edit the open program from the console. <strong>Verify</strong> checks acceptance boxes in the saved file.</p>
         </div>
 
         <div class="guide-body hidden" data-guide-panel="it">
-          <p class="guide-lead">Agent Loop tiene una coda task nel repo. La console serve a pianificare. L'agent gira in Cursor, Claude Code o Codex.</p>
+          <p class="guide-lead">Agent Loop tiene una coda task nel repo. Usa questa console per pianificare. Il lavoro parte da un coding agent in Cursor, Claude Code o Codex.</p>
           <ol class="guide-steps">
             <li>Crea un task: titolo, modifica il program, clicca <strong>Save</strong>.</li>
             <li>Completa il setup e attiva <strong>autostart</strong> se richiesto.</li>
-            <li>Apri una sessione <strong>nuova</strong> dell'agent in questo workspace (Cursor, Claude o Codex).</li>
-            <li>Scrivi un messaggio breve, ad esempio: <code>vai</code> o <code>parti</code>.</li>
-            <li>L'agent legge i task in sospeso e li esegue. Non serve un brief lungo.</li>
+            <li>Apri una chat <strong>nuova</strong> dell'agent in questo workspace.</li>
+            <li>Invia un messaggio breve. Esempi sotto.</li>
+            <li>L'agent carica la coda, prende il prossimo task in sospeso e lo esegue.</li>
           </ol>
-          <p class="guide-note">Usa <strong>Run AI</strong> in console quando vuoi che l'agent completi o modifichi un program da qui.</p>
+
+          <div class="guide-examples">
+            <h3 class="guide-examples-title">Esempi</h3>
+
+            <p class="guide-examples-label">1. Crea un task in console</p>
+            <ul class="guide-examples-list">
+              <li>Titolo: <code>Ottimizza UX mobile</code></li>
+              <li>File program: <code>specs/agent-tasks/TASK-002.md</code></li>
+              <li>Compila Objective e Acceptance (<code>- [ ]</code>), poi <strong>Save</strong></li>
+            </ul>
+
+            <p class="guide-examples-label">2. Messaggi da inviare in una chat nuova</p>
+            <ul class="guide-examples-list guide-examples-list--inline">
+              <li><code>vai</code></li>
+              <li><code>parti</code></li>
+              <li><code>prossimo task</code></li>
+              <li><code>go</code></li>
+            </ul>
+            <p class="guide-examples-hint">Basta un messaggio corto. Non serve incollare tutto il program.</p>
+
+            <p class="guide-examples-label">3. Cosa fa l'agent</p>
+            <ul class="guide-examples-list">
+              <li>Legge <code>.agent-loop/queue.json</code></li>
+              <li>Apre <code>specs/agent-tasks/TASK-002.md</code></li>
+              <li>Implementa lo scope, lancia lint/test se serve, spunta i criteri di acceptance</li>
+            </ul>
+          </div>
+
+          <p class="guide-note"><strong>Run AI</strong> qui se vuoi che l'agent completi o modifichi il program aperto da console. <strong>Verify</strong> controlla le checkbox di acceptance nel file salvato.</p>
         </div>
 
         <div class="modal-actions guide-actions">

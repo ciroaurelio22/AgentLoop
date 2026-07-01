@@ -53,6 +53,7 @@ const els = {
   btnGuide: $('#btn-guide'),
   guideDialog: $('#guide-dialog'),
   btnGuideClose: $('#btn-guide-close'),
+  kitVersion: $('#kit-version'),
 };
 
 const GUIDE_I18N = {
@@ -720,8 +721,16 @@ async function saveAgentSettings(
   }
 }
 
+function setKitVersion(version) {
+  if (!els.kitVersion) return;
+  const v = String(version ?? '').trim();
+  els.kitVersion.textContent = v ? `v${v.replace(/^v/i, '')}` : 'v?';
+  els.kitVersion.title = v ? `Agent Loop kit v${v}` : 'Agent Loop kit version unknown';
+}
+
 async function refreshState({ skipModels = false } = {}) {
   const data = await api('/api/state');
+  setKitVersion(data.kitVersion);
   if (data.repo) setRepoPath(data.repo);
   state.taskId = data.nextTaskId;
   els.taskId.textContent = data.nextTaskId;

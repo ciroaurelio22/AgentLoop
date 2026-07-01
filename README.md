@@ -1,9 +1,63 @@
 # Agent Loop
 
-**Production harness for coding agents**
+**Turn your repo into a job queue for coding agents.**
 
-One task, one program, deterministic verify, human in the loop.  
-Works with **Cursor CLI** and **Claude Code CLI**. Not tied to a single IDE.
+Most teams treat every agent session like a fresh hire: long prompts, lost context, subjective “done.”  
+Agent Loop flips that: **each task is a Markdown program in git**, a JSON queue on disk, and verify gates the agent cannot skip.
+
+Open a **new** Cursor, Claude Code, or Codex chat, send a one-word message like **`go`** or **`vai`**, and the agent picks the next pending task, reads the contract, does the work, and runs checks. No essay in chat. No amnesia on retry.
+
+```text
+You (new chat):  go
+
+Agent:           read .agent-loop/queue.json
+                 open specs/agent-tasks/TASK-002.md
+                 implement scope + tick acceptance - [x]
+                 run agent:verify on touched packages
+You:             review PR against the program file, not chat memory
+```
+
+That is the idea: **structure lives in the repo; the agent is the worker.**
+
+---
+
+## Try it in 60 seconds
+
+| Step | You | Result |
+| ---- | --- | ------ |
+| 1 | `pnpm agent:init TASK-001 "Fix mobile nav"` | Program file + queue entry on disk |
+| 2 | Edit Objective and Acceptance (`- [ ]`) in [Agent Console](tools/agent-gui/), **Save** | Contract in git, not Slack |
+| 3 | Open a **new** agent session in this repo | Clean context; rules still on disk |
+| 4 | Send **`go`**, **`vai`**, or **`next task`** | Agent loads queue and executes TASK-001 |
+| 5 | `pnpm agent:verify` (or Cursor hook on stop) | Lint / typecheck / test on touched paths only |
+
+**Example messages that work** (any short nudge is fine):
+
+```text
+go
+start
+next task
+vai
+parti
+```
+
+You do not paste the whole program into chat. The agent reads `specs/agent-tasks/TASK-001.md` itself.
+
+**Example program excerpt** (`specs/agent-tasks/TASK-001.md`):
+
+```markdown
+## Objective
+Make the nav usable on 320px screens without horizontal scroll.
+
+## Constraints
+- Touch only `apps/web/`
+- No autonomous merge
+
+## Acceptance criteria
+- [ ] No horizontal scroll at 320px
+- [ ] Existing desktop layout unchanged
+- [ ] `pnpm agent:verify` passes
+```
 
 ---
 
@@ -244,7 +298,7 @@ Vague idea → program.md → coding agent → verify → PR → human review �
 | Non-negotiable verify | `agent:verify` (lint, typecheck, test on touched packages) |
 | Explicit acceptance | `agent:acceptance`: program checklist |
 | Partial autonomy | Optional Cursor hooks; no autonomous merge |
-| Backend agnostic | Cursor CLI (`agent`) or Claude Code (`claude`) |
+| Backend agnostic | Cursor CLI (`agent`), Claude Code (`claude`), or Codex (`codex`) |
 
 ### What the kit includes
 
@@ -283,6 +337,7 @@ flowchart LR
 | ------- | --- | ---- |
 | Cursor | `agent` | [Cursor CLI](https://cursor.com/docs/cli/overview) |
 | Claude Code | `claude` | [Claude Code setup](https://code.claude.com/docs/en/setup) |
+| OpenAI Codex | `codex` | [Codex CLI](https://developers.openai.com/codex) |
 | GitHub (optional) | `gh` | [GitHub CLI manual](https://cli.github.com/manual/) |
 
 ```bash
@@ -293,14 +348,19 @@ node /path/to/AgentLoop/bin/install.mjs --target . --all
 node -e "require('node:fs').mkdirSync('.agent-loop',{recursive:true}); require('node:fs').writeFileSync('.agent-loop/autostart','')"
 
 pnpm agent:init TASK-001 "First task"
-pnpm agent:next
+# edit specs/agent-tasks/TASK-001.md (or Agent Console) → Save
+# new agent chat in this repo → message: go
+pnpm agent:next    # optional: prints the loop prompt for hooks/CLI
 ```
 
-Installer flags: `--cursor`, `--claude`, `--gui`, `--all` (default when no adapter flags are passed).
+Installer flags: `--cursor`, `--claude`, `--gui`, `--all` (default when no adapter flags are passed).  
+Package manager is auto-detected (`pnpm`, `npm`, `yarn`, `bun`): `node scripts/agent/detect-pm.mjs`
 
 ### Agent Console
 
-`pnpm agent:gui` opens the web console at `http://127.0.0.1:9477`. A **setup gate** blocks the UI until workspace, autostart, and the configured agent CLI are ready. Optional `gh` enables PR badges in the sidebar.
+`pnpm agent:gui` opens the web console at `http://127.0.0.1:9477`. Plan tasks, edit programs, run **Run AI** for in-console drafting. For day-to-day execution, create/save tasks here, then tell your coding agent **`go`** in a new session. A **How it works** guide (EN/IT) is built into the UI.
+
+A **setup gate** blocks the UI until workspace, autostart, and the configured agent CLI are ready. Optional `gh` enables PR badges in the sidebar.
 
 With `--cursor` / `--all`, the **`ensure-gui`** hook runs on every Agent **sessionStart**: it checks `http://127.0.0.1:9477/api/state` and starts the server if needed (requires `.agent-loop/autostart`). Manual check: `pnpm agent:gui:ensure`.
 
