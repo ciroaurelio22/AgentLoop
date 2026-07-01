@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, watch } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loopDir as resolveLoopDir } from './repo-utils.mjs';
+import { attachPrStatus } from './pr-status.mjs';
 
 /** @typedef {{ write: (chunk: string) => void; end: () => void }} SseClient */
 
@@ -58,6 +59,7 @@ export function readTaskSnapshot(repoRoot) {
         status: String(t.status ?? 'pending'),
         priority: Number(t.priority ?? 100),
         program: t.program ?? `specs/agent-tasks/${t.id}.md`,
+        branchSlug: t.branchSlug ?? null,
         createdAt: t.createdAt ?? null,
       }));
     } catch {
@@ -169,7 +171,15 @@ export class QueueWatcher {
 
   /** @param {SseClient} client */
   #sendTo(client) {
-    const snapshot = readTaskSnapshot(this.repoRoot);
+    void this.#sendToAsync(client);
+  }
+
+  /** @param {SseClient} client */
+  async #sendToAsync(client) {
+    let snapshot = readTaskSnapshot(this.repoRoot);
+    if (this.repoRoot) {
+      snapshot = await attachPrStatus(this.repoRoot, snapshot);
+    }
     const payload = JSON.stringify(snapshot);
     client.write(`event: tasks\ndata: ${payload}\n\n`);
   }

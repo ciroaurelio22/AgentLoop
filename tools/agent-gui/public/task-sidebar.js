@@ -15,6 +15,24 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;');
 }
 
+function renderPrLine(pr) {
+  if (!pr?.number) return '';
+  const n = escapeHtml(String(pr.number));
+  if (pr.state === 'OPEN' && pr.url) {
+    return `<a class="task-item-pr task-item-pr--open" href="${escapeHtml(pr.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">PR #${n}</a>`;
+  }
+  if (pr.state === 'MERGED') {
+    if (pr.url) {
+      return `<a class="task-item-pr task-item-pr--merged" href="${escapeHtml(pr.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">Merged #${n}</a>`;
+    }
+    return `<span class="task-item-pr task-item-pr--merged">Merged #${n}</span>`;
+  }
+  if (pr.state === 'CLOSED') {
+    return `<span class="task-item-pr task-item-pr--closed">PR closed</span>`;
+  }
+  return '';
+}
+
 export class TaskSidebar {
   /**
    * @param {HTMLElement} root
@@ -77,6 +95,7 @@ export class TaskSidebar {
         ]
           .filter(Boolean)
           .join(' ');
+        const prLine = renderPrLine(t.pr);
         const deleteBtn = DELETABLE.has(status)
           ? `<button type="button" class="task-item-delete" data-delete-id="${escapeHtml(id)}" title="Elimina task" aria-label="Elimina ${escapeHtml(id)}">×</button>`
           : '';
@@ -85,7 +104,10 @@ export class TaskSidebar {
             <button type="button" class="${classes}" data-task-id="${escapeHtml(id)}" data-status="${escapeHtml(status)}">
               <span class="task-item-top">
                 <span class="task-item-id">${escapeHtml(id)}</span>
-                <span class="task-status task-status--${escapeHtml(status)}">${escapeHtml(STATUS_LABEL[status] ?? status)}</span>
+                <span class="task-item-status-col">
+                  <span class="task-status task-status--${escapeHtml(status)}">${escapeHtml(STATUS_LABEL[status] ?? status)}</span>
+                  ${prLine}
+                </span>
               </span>
               <span class="task-item-title">${escapeHtml(t.title)}</span>
             </button>

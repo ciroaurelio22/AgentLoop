@@ -17,6 +17,7 @@ import { join, extname, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ProgramWatcher } from './lib/program-watcher.mjs';
 import { QueueWatcher, readTaskSnapshot } from './lib/queue-watcher.mjs';
+import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
 import { detectPackageManager } from '../../scripts/agent/lib/package-manager.mjs';
 import {
@@ -52,6 +53,11 @@ const programWatcher = new ProgramWatcher();
 const queueWatcher = new QueueWatcher();
 
 if (repoRoot) queueWatcher.setRepo(repoRoot);
+
+setInterval(() => {
+  clearPrStatusCache();
+  queueWatcher.notify();
+}, 60_000);
 
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -164,6 +170,7 @@ async function handleApi(req, res, url) {
       }
       repoRoot = path;
       saveConfig({ ...loadConfig(), last_repo: path });
+      clearPrStatusCache();
       queueWatcher.setRepo(repoRoot);
       return sendJson(res, 200, getState());
     } catch {
@@ -173,7 +180,9 @@ async function handleApi(req, res, url) {
 
   if (req.method === 'GET' && url.pathname === '/api/tasks') {
     const root = ensureRepo();
-    return sendJson(res, 200, readTaskSnapshot(root));
+    const snapshot = readTaskSnapshot(root);
+    if (root) await attachPrStatus(root, snapshot);
+    return sendJson(res, 200, snapshot);
   }
 
   if (req.method === 'GET' && url.pathname === '/api/watch/tasks') {

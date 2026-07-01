@@ -224,9 +224,46 @@ body {
 
 .task-item-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.task-item-status-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.task-item-pr {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.task-item-pr--open {
+  color: #2563eb;
+}
+
+.task-item-pr--open:hover {
+  text-decoration: underline;
+}
+
+.task-item-pr--merged {
+  color: var(--ok);
+  text-decoration: none;
+}
+
+.task-item-pr--merged:hover {
+  text-decoration: underline;
+}
+
+.task-item-pr--closed {
+  color: var(--text-faint);
 }
 
 .task-item-id {
