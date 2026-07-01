@@ -223,6 +223,18 @@ function setBusy(busy) {
   setAgentSettingsEnabled(Boolean(getRepoPath()) && !busy);
 }
 
+function taskStatusFor(taskId) {
+  const id = taskId?.toUpperCase();
+  if (!id) return null;
+  return lastTaskSnapshot.find((t) => t.id === id)?.status ?? null;
+}
+
+function updateTaskActionButtons(taskId) {
+  const isDone = taskStatusFor(taskId) === 'done';
+  els.btnVerify.classList.toggle('hidden', isDone);
+  els.btnProgramAi.classList.toggle('hidden', isDone);
+}
+
 function setCreateVisible(show) {
   els.btnCreate.classList.toggle('hidden', !show);
 }
@@ -251,6 +263,7 @@ async function previewCreate() {
       watchSource = null;
     }
     setCreateVisible(false);
+    updateTaskActionButtons(taskId);
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -496,6 +509,7 @@ function connectTasksWatch() {
       const snapshot = JSON.parse(ev.data);
       lastTaskSnapshot = snapshot.tasks ?? [];
       taskSidebar?.render(snapshot);
+      if (currentViewTaskId) updateTaskActionButtons(currentViewTaskId);
     } catch {
       /* ignore */
     }
@@ -520,6 +534,7 @@ async function loadTask(taskId) {
   if (meta?.title) els.taskTitle.value = meta.title;
   els.taskId.textContent = id;
   showTaskActivity(id, meta);
+  updateTaskActionButtons(id);
 
   state.dirty = false;
 
@@ -537,6 +552,7 @@ async function loadTask(taskId) {
     setSyncBadge('draft');
     connectProgramWatch(id);
     setCreateVisible(false);
+    updateTaskActionButtons(id);
   }
 }
 
@@ -1287,7 +1303,7 @@ function bindEvents() {
       e.preventDefault();
       if (!els.btnCreate.classList.contains('hidden') && !els.btnCreate.disabled) {
         void previewCreate();
-      } else {
+      } else if (!els.btnProgramAi.classList.contains('hidden') && !els.btnProgramAi.disabled) {
         void els.btnProgramAi.click();
       }
     }
