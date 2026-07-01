@@ -27,6 +27,14 @@
 
       <div class="main">
         <header class="topbar">
+          <button
+            type="button"
+            id="btn-guide"
+            class="btn btn--secondary btn--sm btn--guide"
+            title="How Agent Loop works"
+          >
+            How it works
+          </button>
           <div class="topbar-workspace">
             <span
               id="repo-path"
@@ -203,6 +211,46 @@
         </div>
       </div>
     </div>
+
+    <dialog id="guide-dialog" class="modal modal--guide" aria-labelledby="guide-title">
+      <div class="guide-shell">
+        <div class="guide-head">
+          <h2 id="guide-title">How Agent Loop works</h2>
+          <div class="guide-lang" role="group" aria-label="Language">
+            <button type="button" class="guide-lang-btn guide-lang-btn--active" data-guide-lang="en">EN</button>
+            <button type="button" class="guide-lang-btn" data-guide-lang="it">IT</button>
+          </div>
+        </div>
+
+        <div class="guide-body" data-guide-panel="en">
+          <p class="guide-lead">Agent Loop keeps a task queue in your repo. The console is for planning. The coding agent runs in Cursor, Claude Code, or Codex.</p>
+          <ol class="guide-steps">
+            <li>Create a task: title, edit the program, click <strong>Save</strong>.</li>
+            <li>Complete setup and enable <strong>autostart</strong> if prompted.</li>
+            <li>Open a <strong>new</strong> agent session in this workspace (Cursor, Claude, or Codex).</li>
+            <li>Send a short message, for example: <code>go</code> or <code>start</code>.</li>
+            <li>The agent reads pending tasks and works through them. No long brief needed.</li>
+          </ol>
+          <p class="guide-note">Use <strong>Run AI</strong> in this console when you want the agent to draft or edit a program from here.</p>
+        </div>
+
+        <div class="guide-body hidden" data-guide-panel="it">
+          <p class="guide-lead">Agent Loop tiene una coda task nel repo. La console serve a pianificare. L'agent gira in Cursor, Claude Code o Codex.</p>
+          <ol class="guide-steps">
+            <li>Crea un task: titolo, modifica il program, clicca <strong>Save</strong>.</li>
+            <li>Completa il setup e attiva <strong>autostart</strong> se richiesto.</li>
+            <li>Apri una sessione <strong>nuova</strong> dell'agent in questo workspace (Cursor, Claude o Codex).</li>
+            <li>Scrivi un messaggio breve, ad esempio: <code>vai</code> o <code>parti</code>.</li>
+            <li>L'agent legge i task in sospeso e li esegue. Non serve un brief lungo.</li>
+          </ol>
+          <p class="guide-note">Usa <strong>Run AI</strong> in console quando vuoi che l'agent completi o modifichi un program da qui.</p>
+        </div>
+
+        <div class="modal-actions guide-actions">
+          <button type="button" id="btn-guide-close" class="btn btn--primary" data-close-en="Got it" data-close-it="Ok">Got it</button>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="agent-ask-dialog" class="modal modal--request modal--ask">
       <form method="dialog" id="agent-ask-form">

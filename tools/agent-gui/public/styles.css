@@ -454,7 +454,7 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 12px;
   padding: 0 2px;
   height: 30px;
@@ -463,9 +463,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: min(560px, 100%);
+}
+.btn--guide {
+  flex-shrink: 0;
+  font-size: 11px;
 }
 
 .workspace-path {
@@ -1206,6 +1210,104 @@ body.setup-blocked .app-frame {
 }
 .modal-hint { margin: 7px 0 0; font-size: 10px; color: var(--text-faint); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 14px; }
+
+.modal--guide {
+  width: min(560px, calc(100vw - 32px));
+  max-width: none;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg);
+}
+
+.modal--guide::backdrop { background: rgb(12 15 20 / 42%); backdrop-filter: blur(10px); }
+
+.guide-shell { padding: 20px 22px 18px; }
+
+.guide-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.guide-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  padding-right: 8px;
+}
+
+.guide-lang {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background: var(--surface-2);
+}
+
+.guide-lang-btn {
+  min-width: 36px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.guide-lang-btn:hover { color: var(--text); background: var(--surface); }
+
+.guide-lang-btn--active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.guide-body { font-size: 12px; line-height: 1.55; color: var(--text); }
+
+.guide-lead {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+}
+
+.guide-steps {
+  margin: 0 0 12px;
+  padding-left: 1.15rem;
+}
+
+.guide-steps li { margin-bottom: 8px; }
+.guide-steps li:last-child { margin-bottom: 0; }
+
+.guide-steps code {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.guide-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.guide-actions { margin-top: 16px; margin-bottom: 0; }
 
 /* ---------- Toast ---------- */
 .toast {

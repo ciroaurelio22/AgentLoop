@@ -50,7 +50,54 @@ const els = {
   toast: $('#toast'),
   bootOverlay: $('#boot-overlay'),
   bootMessage: $('#boot-message'),
+  btnGuide: $('#btn-guide'),
+  guideDialog: $('#guide-dialog'),
+  btnGuideClose: $('#btn-guide-close'),
 };
+
+const GUIDE_I18N = {
+  en: {
+    title: 'How Agent Loop works',
+    btnTop: 'How it works',
+    close: 'Got it',
+  },
+  it: {
+    title: 'Come funziona Agent Loop',
+    btnTop: 'Guida',
+    close: 'Ok',
+  },
+};
+
+const GUIDE_LANG_KEY = 'agent-console-guide-lang';
+
+function getGuideLang() {
+  const saved = localStorage.getItem(GUIDE_LANG_KEY);
+  return saved === 'it' ? 'it' : 'en';
+}
+
+function setGuideLang(lang) {
+  const next = lang === 'it' ? 'it' : 'en';
+  localStorage.setItem(GUIDE_LANG_KEY, next);
+
+  document.querySelectorAll('[data-guide-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.guidePanel !== next);
+  });
+
+  document.querySelectorAll('.guide-lang-btn').forEach((btn) => {
+    btn.classList.toggle('guide-lang-btn--active', btn.dataset.guideLang === next);
+  });
+
+  const copy = GUIDE_I18N[next];
+  const title = document.getElementById('guide-title');
+  if (title) title.textContent = copy.title;
+  if (els.btnGuide) els.btnGuide.textContent = copy.btnTop;
+  if (els.btnGuideClose) els.btnGuideClose.textContent = copy.close;
+}
+
+function openGuideDialog() {
+  setGuideLang(getGuideLang());
+  els.guideDialog?.showModal();
+}
 
 /** @type {Promise<boolean>} */
 let agentAskChain = Promise.resolve(true);
@@ -1172,6 +1219,12 @@ async function draftExisting() {
 }
 
 function bindEvents() {
+  els.btnGuide?.addEventListener('click', () => openGuideDialog());
+  els.btnGuideClose?.addEventListener('click', () => els.guideDialog?.close());
+  document.querySelectorAll('.guide-lang-btn').forEach((btn) => {
+    btn.addEventListener('click', () => setGuideLang(btn.dataset.guideLang));
+  });
+
   els.btnSetupApply?.addEventListener('click', () => void applyWorkspaceFromGate());
   els.btnSetupRecheck?.addEventListener('click', () => void refreshSetup());
 
@@ -1313,6 +1366,7 @@ async function init() {
       onDelete: (id) => void deleteTask(id),
     });
     bindEvents();
+    setGuideLang(getGuideLang());
     renderProgramPreview('');
 
     connectTasksWatch();
