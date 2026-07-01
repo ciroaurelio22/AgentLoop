@@ -47,6 +47,7 @@ function buildPrompt(taskRel, workspace) {
     `Read \`${draftPath}\` for the full user request.`,
     `Explore the codebase and edit ONLY \`${taskRel}\` (plus tests if acceptance requires code).`,
     'Fill Objective, Constraints, Scope, Acceptance (- [ ] checkboxes), Verify, and Notes.',
+    'If you need clarification, run `node scripts/agent/ask-user.mjs "your question"` and wait for the GUI answer.',
     'Save the program file when done.',
   ].join(' ');
 }

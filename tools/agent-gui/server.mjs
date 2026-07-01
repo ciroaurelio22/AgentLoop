@@ -35,6 +35,12 @@ import {
   saveConfig,
 } from './lib/repo-utils.mjs';
 import { parseStreamLine } from './lib/stream-parser.mjs';
+import {
+  setAgentAskBroadcaster,
+  clearAgentAskBroadcaster,
+  requestUserInput,
+  answerUserInput,
+} from './lib/agent-ask.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, 'public');
@@ -48,6 +54,9 @@ const MIME = {
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let activeAgent = null;
+
+/** @type {number} */
+let guiPort = DEFAULT_PORT;
 
 /** @type {string | null} */
 let repoRoot = resolveStartupRepo(process.cwd());
@@ -146,7 +155,11 @@ function writeDraftPrompt({ taskId, title, taskRel, description, currentProgram 
     `3. Compila tutte le sezioni del template program (Obiettivo, Vincoli, Scope, Acceptance, Verifica, Note).\n` +
     `4. Acceptance criteria: checklist \`- [ ]\` verificabili e specifiche.\n` +
     `5. Vincoli: usa ${pm} (package manager del repo), diff minimi, no merge autonomo, test se tocchi codice.\n` +
-    `6. Scrivi in **italiano**, tono operativo Karpathy-style.\n`;
+    `6. Scrivi in **italiano**, tono operativo Karpathy-style.\n` +
+    `7. Se ti mancano dettagli per compilare il program, **chiedi all'utente** con function call sincrona:\n` +
+    `   \`node scripts/agent/ask-user.mjs "domanda"\`\n` +
+    `   oppure \`node scripts/agent/ask-user.mjs --question "..." --option "A" --option "B"\`\n` +
+    `   Attendi la risposta nel popup Agent Console prima di proseguire.\n`;
   if (currentProgram?.trim()) {
     body += `\n## Bozza attuale\n\n\`\`\`markdown\n${currentProgram.trim().slice(0, 12000)}\n\`\`\`\n`;
   }
@@ -493,6 +506,44 @@ async function handleApi(req, res, url) {
     return undefined;
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/agent/ask') {
+    if (!activeAgent || activeAgent.exitCode !== null) {
+      return sendJson(res, 409, { ok: false, error: 'Nessun agent attivo in Agent Console' });
+    }
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return sendJson(res, 400, { ok: false, error: 'Body JSON non valido' });
+    }
+    try {
+      const answer = await requestUserInput({
+        question: body.question,
+        options: body.options,
+        allowMultiple: body.allowMultiple,
+      });
+      return sendJson(res, 200, { ok: true, answer });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const status = message.includes('time') ? 504 : 400;
+      return sendJson(res, status, { ok: false, error: message });
+    }
+  }
+
+  const askAnswerMatch = url.pathname.match(/^\/api\/agent\/ask\/([^/]+)\/answer$/);
+  if (req.method === 'POST' && askAnswerMatch) {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return sendJson(res, 400, { error: 'Body JSON non valido' });
+    }
+    const id = decodeURIComponent(askAnswerMatch[1]);
+    const ok = answerUserInput(id, body);
+    if (!ok) return sendJson(res, 404, { error: 'Domanda non trovata o già risposta' });
+    return sendJson(res, 200, { ok: true });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/agent/start') {
     if (!repoRoot || !isValidRepo(repoRoot)) {
       return sendJson(res, 400, { error: 'Select a valid workspace' });
@@ -558,10 +609,12 @@ async function handleApi(req, res, url) {
 
     sendEvent('chunk', { kind: 'status', text: 'Avvio agent…' });
 
+    setAgentAskBroadcaster(sendEvent);
+
     activeAgent = spawn('node', [script, ...args], {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+      env: { ...process.env, AGENT_GUI_PORT: String(guiPort) },
       windowsHide: true,
     });
 
@@ -588,6 +641,7 @@ async function handleApi(req, res, url) {
     activeAgent.on('close', (code) => {
       if (lineBuffer.trim()) emitLine(lineBuffer);
       lineBuffer = '';
+      clearAgentAskBroadcaster();
       const exitCode = code ?? 1;
       let program = '';
       const programPath = join(repoRoot, 'specs', 'agent-tasks', `${taskId}.md`);
@@ -600,6 +654,7 @@ async function handleApi(req, res, url) {
     });
 
     activeAgent.on('error', (err) => {
+      clearAgentAskBroadcaster();
       sendEvent('error', { message: err.message });
       sendEvent('done', { code: 127, program: '', taskId });
       activeAgent = null;
@@ -666,6 +721,7 @@ function openBrowser(url) {
 
 function main() {
   const port = Number(process.env.AGENT_GUI_PORT) || DEFAULT_PORT;
+  guiPort = port;
   const server = createAppServer();
   ensureRepo();
   void Promise.all([warmProviderStatus(repoRoot), warmCatalog(repoRoot ?? process.cwd())]).then(

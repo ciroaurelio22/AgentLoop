@@ -11,6 +11,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/vendor/marked.min.js"></script>
   </head>
   <body class="boot-loading">
     <div class="layout">
@@ -31,17 +32,13 @@
             <h1 class="app-title">Agent Console</h1>
           </div>
           <div class="topbar-workspace">
-            <input
+            <span
               id="repo-path"
-              type="text"
-              class="input input--path input--readonly"
-              placeholder="Nessun workspace"
-              spellcheck="false"
+              class="workspace-path workspace-path--empty"
+              data-path=""
+              title=""
               aria-label="Workspace path"
-              autocomplete="off"
-              readonly
-              tabindex="-1"
-            />
+            >Nessun workspace</span>
           </div>
         </header>
 
@@ -88,6 +85,23 @@
             <div class="panel-head-actions">
               <button
                 type="button"
+                id="btn-program-edit"
+                class="btn btn--secondary btn--sm btn--program-edit"
+                title="Edit program source"
+                aria-label="Edit program"
+              >
+                <span class="btn-program-edit-icon" aria-hidden="true">✎</span>
+              </button>
+              <button
+                type="button"
+                id="btn-program-apply"
+                class="btn btn--primary btn--sm hidden"
+                title="Apply edits and show preview"
+              >
+                Apply
+              </button>
+              <button
+                type="button"
                 id="btn-save"
                 class="btn btn--secondary btn--sm"
                 title="Save program to disk"
@@ -105,11 +119,18 @@
             </div>
           </div>
           <div class="program-body">
+            <div
+              id="program-preview"
+              class="program-preview"
+              aria-live="polite"
+              aria-label="Program preview"
+            ></div>
             <textarea
               id="program-editor"
               class="program-editor"
               spellcheck="false"
               placeholder="Program content will appear here…"
+              aria-label="Program source editor"
             ></textarea>
             <button
               type="button"
@@ -184,6 +205,24 @@
         </div>
       </div>
     </div>
+
+    <dialog id="agent-ask-dialog" class="modal modal--request modal--ask">
+      <form method="dialog" id="agent-ask-form">
+        <h2 id="agent-ask-heading">Domanda dell'agente</h2>
+        <p id="agent-ask-question" class="modal-sub modal-ask-question"></p>
+        <div id="agent-ask-options" class="agent-ask-options hidden"></div>
+        <textarea
+          id="agent-ask-text"
+          class="modal-textarea"
+          rows="5"
+          placeholder="Scrivi la tua risposta…"
+        ></textarea>
+        <div class="modal-actions">
+          <button type="button" id="agent-ask-cancel" class="btn btn--secondary">Annulla</button>
+          <button type="submit" id="agent-ask-submit" class="btn btn--primary">Invia risposta</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="desc-dialog" class="modal modal--request">
       <form method="dialog" id="desc-form">

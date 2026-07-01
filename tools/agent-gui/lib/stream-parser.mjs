@@ -51,7 +51,14 @@ export function extractTool(obj) {
     ['readToolCall', 'Read', (a) => shortenPath(a.path)],
     ['writeToolCall', 'Write', (a) => shortenPath(a.path)],
     ['grepToolCall', 'Grep', (a) => a.pattern ?? a.query ?? ''],
-    ['shellToolCall', 'Shell', (a) => (a.command ?? '').slice(0, 72)],
+    ['shellToolCall', 'Shell', (a) => {
+      const cmd = (a.command ?? '').trim();
+      if (/ask-user\.mjs/i.test(cmd)) {
+        const m = cmd.match(/ask-user\.mjs(?:\s+--question\s+"([^"]+)"|\s+"([^"]+)")/i);
+        return m?.[1] ?? m?.[2] ?? 'question';
+      }
+      return cmd.slice(0, 72);
+    }],
     ['listToolCall', 'List', (a) => shortenPath(a.path)],
     ['searchToolCall', 'Search', (a) => a.query ?? ''],
     ['deleteToolCall', 'Delete', (a) => shortenPath(a.path)],
@@ -61,7 +68,11 @@ export function extractTool(obj) {
     const call = tc[key];
     if (call && typeof call === 'object') {
       const args = call.args ?? {};
-      return { label, detail: pick(args) ?? '' };
+      const detail = pick(args) ?? '';
+      if (key === 'shellToolCall' && /ask-user\.mjs/i.test(args.command ?? '')) {
+        return { label: 'Ask user', detail };
+      }
+      return { label, detail };
     }
   }
 

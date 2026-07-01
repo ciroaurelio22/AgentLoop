@@ -1,5 +1,6 @@
 import { ActivityFeed } from './activity-feed.js';
 import { TaskSidebar } from './task-sidebar.js';
+import { renderProgramMarkdown } from './program-markdown.mjs';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -27,7 +28,11 @@ const els = {
   activityFeed: $('#activity-feed'),
   programFile: $('#program-file'),
   programSync: $('#program-sync'),
+  programBody: $('.program-body'),
+  programPreview: $('#program-preview'),
   programEditor: $('#program-editor'),
+  btnProgramEdit: $('#btn-program-edit'),
+  btnProgramApply: $('#btn-program-apply'),
   descDialog: $('#desc-dialog'),
   descForm: $('#desc-form'),
   descHeading: $('#desc-heading'),
@@ -35,6 +40,13 @@ const els = {
   descText: $('#desc-text'),
   descCancel: $('#desc-cancel'),
   descSubmit: $('#desc-submit'),
+  agentAskDialog: $('#agent-ask-dialog'),
+  agentAskForm: $('#agent-ask-form'),
+  agentAskQuestion: $('#agent-ask-question'),
+  agentAskOptions: $('#agent-ask-options'),
+  agentAskText: $('#agent-ask-text'),
+  agentAskCancel: $('#agent-ask-cancel'),
+  agentAskSubmit: $('#agent-ask-submit'),
   toast: $('#toast'),
   bootOverlay: $('#boot-overlay'),
   bootMessage: $('#boot-message'),
@@ -44,12 +56,17 @@ const state = {
   taskId: 'TASK-001',
   activeProgramId: null,
   agentRunning: false,
+  /** @type {((value: boolean) => void) | null} */
+  agentAskResolve: null,
   descResolve: null,
   diskContent: '',
   dirty: false,
   agentSettingsReady: false,
   savingAgentSettings: false,
   loadingAgentModels: false,
+  programEditing: false,
+  /** @type {{ id: string; question: string; options: string[]; allowMultiple: boolean } | null} */
+  agentAskPayload: null,
   selectedModel: '',
   /** @type {object[] | null} */
   installedProviders: null,
@@ -104,6 +121,20 @@ function toast(message, type = 'info') {
   toastTimer = setTimeout(() => els.toast.classList.add('hidden'), 3500);
 }
 
+function getRepoPath() {
+  return (els.repoPath?.dataset.path ?? '').trim();
+}
+
+/** @param {string | null | undefined} path */
+function setRepoPath(path) {
+  const value = (path ?? '').trim();
+  if (!els.repoPath) return;
+  els.repoPath.dataset.path = value;
+  els.repoPath.textContent = value || 'Nessun workspace';
+  els.repoPath.title = value;
+  els.repoPath.classList.toggle('workspace-path--empty', !value);
+}
+
 function setBootMessage(message) {
   if (els.bootMessage) els.bootMessage.textContent = message;
 }
@@ -135,8 +166,10 @@ function setBusy(busy) {
   els.btnSave.disabled = busy;
   els.btnVerify.disabled = busy;
   els.btnProgramAi.disabled = busy;
+  els.btnProgramEdit.disabled = busy;
+  els.btnProgramApply.disabled = busy;
   els.btnSidebarNew.disabled = busy;
-  setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !busy);
+  setAgentSettingsEnabled(Boolean(getRepoPath()) && !busy);
 }
 
 function setCreateVisible(show) {
@@ -278,7 +311,7 @@ async function refreshSetup() {
       applyProviderOptions(setup.installedProviders, els.agentBackend.value);
     }
     if (els.setupRepoPath && !setup.checks?.find((c) => c.id === 'workspace')?.ok) {
-      if (els.repoPath.value.trim()) els.setupRepoPath.value = els.repoPath.value;
+      if (getRepoPath()) els.setupRepoPath.value = getRepoPath();
     }
     return setup;
   } catch {
@@ -314,12 +347,40 @@ function markDirty() {
   setSyncBadge(state.dirty ? 'dirty' : 'live');
 }
 
+function renderProgramPreview(content = els.programEditor.value) {
+  if (!els.programPreview) return;
+  els.programPreview.innerHTML = renderProgramMarkdown(content);
+}
+
+function setProgramViewMode(editing) {
+  state.programEditing = editing;
+  els.programBody?.classList.toggle('program-body--edit', editing);
+  els.btnProgramEdit?.classList.toggle('hidden', editing);
+  els.btnProgramApply?.classList.toggle('hidden', !editing);
+  if (editing) {
+    els.programEditor?.focus();
+  } else {
+    renderProgramPreview();
+  }
+}
+
+function enterProgramEdit() {
+  setProgramViewMode(true);
+}
+
+function applyProgramEdits() {
+  markDirty();
+  setProgramViewMode(false);
+}
+
 function applyProgramContent(program, { fromDisk = false } = {}) {
-  if (fromDisk && state.dirty) return false;
+  if (fromDisk && (state.dirty || state.programEditing)) return false;
   els.programEditor.value = program;
   state.diskContent = program;
   state.dirty = false;
   setSyncBadge('live');
+  if (state.programEditing) setProgramViewMode(false);
+  else renderProgramPreview(program);
   return true;
 }
 
@@ -515,7 +576,7 @@ function renderModelSelect(models = [], selectedId = '', { loading = false, erro
 }
 
 async function loadAgentModels({ backend, selectedModel } = {}) {
-  if (!els.repoPath.value.trim()) {
+  if (!getRepoPath()) {
     renderModelSelect([], '', { error: 'Select workspace first' });
     return null;
   }
@@ -538,7 +599,7 @@ async function loadAgentModels({ backend, selectedModel } = {}) {
     return null;
   } finally {
     state.loadingAgentModels = false;
-    setAgentSettingsEnabled(Boolean(els.repoPath.value.trim()) && !state.agentRunning);
+    setAgentSettingsEnabled(Boolean(getRepoPath()) && !state.agentRunning);
   }
 }
 
@@ -585,7 +646,7 @@ async function saveAgentSettings(
 
 async function refreshState({ skipModels = false } = {}) {
   const data = await api('/api/state');
-  if (data.repo) els.repoPath.value = data.repo;
+  if (data.repo) setRepoPath(data.repo);
   state.taskId = data.nextTaskId;
   els.taskId.textContent = data.nextTaskId;
   state.installedProviders = data.installedProviders ?? null;
@@ -631,12 +692,130 @@ function askDescription({ heading, subtitle, ai = false }) {
   });
 }
 
+function renderAgentAskOptions({ options = [], allowMultiple = false } = {}) {
+  if (!els.agentAskOptions) return;
+  if (!options.length) {
+    els.agentAskOptions.classList.add('hidden');
+    els.agentAskOptions.innerHTML = '';
+    els.agentAskText?.classList.remove('hidden');
+    return;
+  }
+
+  els.agentAskOptions.classList.remove('hidden');
+  const inputType = allowMultiple ? 'checkbox' : 'radio';
+  const groupName = 'agent-ask-choice';
+  els.agentAskOptions.innerHTML = options
+    .map(
+      (option, index) => `
+        <label class="agent-ask-option">
+          <input type="${inputType}" name="${groupName}" value="${escapeHtml(option)}" ${index === 0 && !allowMultiple ? 'checked' : ''} />
+          <span>${escapeHtml(option)}</span>
+        </label>`,
+    )
+    .join('');
+}
+
+function showAgentAskDialog(payload) {
+  state.agentAskPayload = payload;
+  if (els.agentAskQuestion) els.agentAskQuestion.textContent = payload.question;
+  renderAgentAskOptions(payload);
+  if (els.agentAskText) {
+    els.agentAskText.value = '';
+    els.agentAskText.placeholder = payload.options?.length
+      ? 'Altri dettagli (opzionale)…'
+      : 'Scrivi la tua risposta…';
+  }
+  els.agentAskDialog?.showModal();
+  if (payload.options?.length && !payload.allowMultiple) {
+    els.agentAskOptions?.querySelector('input')?.focus();
+  } else {
+    els.agentAskText?.focus();
+  }
+  return new Promise((resolve) => {
+    state.agentAskResolve = resolve;
+  });
+}
+
+function closeAgentAskDialog(result) {
+  els.agentAskDialog?.close();
+  state.agentAskPayload = null;
+  state.agentAskResolve?.(result);
+  state.agentAskResolve = null;
+}
+
+async function submitAgentAskAnswer() {
+  const payload = state.agentAskPayload;
+  if (!payload) return;
+
+  /** @type {{ answer?: string; answers?: string[]; cancelled?: boolean }} */
+  let body = {};
+
+  if (payload.options?.length) {
+    const selected = [
+      ...els.agentAskOptions.querySelectorAll('input:checked'),
+    ].map((input) => /** @type {HTMLInputElement} */ (input).value);
+    const extra = els.agentAskText?.value.trim() ?? '';
+    if (payload.allowMultiple) {
+      const answers = [...selected];
+      if (extra) answers.push(extra);
+      if (!answers.length) {
+        toast('Seleziona almeno un’opzione', 'warning');
+        return;
+      }
+      body = { answers };
+    } else if (selected.length) {
+      body = { answer: selected[0] };
+    } else if (extra) {
+      body = { answer: extra };
+    } else {
+      toast('Seleziona un’opzione o scrivi una risposta', 'warning');
+      return;
+    }
+  } else {
+    const answer = els.agentAskText?.value.trim() ?? '';
+    if (answer.length < 1) {
+      toast('Scrivi una risposta', 'warning');
+      return;
+    }
+    body = { answer };
+  }
+
+  try {
+    await api(`/api/agent/ask/${encodeURIComponent(payload.id)}/answer`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    closeAgentAskDialog(true);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function cancelAgentAskAnswer() {
+  const payload = state.agentAskPayload;
+  if (!payload) {
+    closeAgentAskDialog(false);
+    return;
+  }
+  try {
+    await api(`/api/agent/ask/${encodeURIComponent(payload.id)}/answer`, {
+      method: 'POST',
+      body: JSON.stringify({ cancelled: true }),
+    });
+  } catch {
+    /* ignore */
+  }
+  closeAgentAskDialog(false);
+}
+
 async function prepareNewTask() {
   if (currentViewTaskId) persistActivity(currentViewTaskId);
   currentViewTaskId = null;
   await refreshState();
   els.taskTitle.value = '';
   els.programEditor.value = '';
+  renderProgramPreview('');
+  setProgramViewMode(false);
   state.diskContent = '';
   state.dirty = false;
   state.activeProgramId = null;
@@ -697,6 +876,7 @@ async function saveProgram() {
     state.diskContent = els.programEditor.value;
     state.dirty = false;
     setSyncBadge('live');
+    setProgramViewMode(false);
     setActiveProgram(taskId);
     await loadTaskList();
     toast('Saved', 'success');
@@ -747,12 +927,12 @@ async function enableAutostart() {
 }
 
 async function applyWorkspaceFromGate() {
-  const path = els.setupRepoPath?.value.trim() || els.repoPath.value.trim();
+  const path = els.setupRepoPath?.value.trim() || getRepoPath();
   if (!path) {
     toast('Enter workspace path', 'warning');
     return;
   }
-  els.repoPath.value = path;
+  setRepoPath(path);
   const ok = await syncWorkspace(path);
   if (!ok) {
     toast('Invalid workspace path', 'error');
@@ -814,6 +994,24 @@ async function startAgent({ taskId, title, description }) {
       activityFeed?.fromChunk(data);
       activityByTask.set(id, activityFeed.exportState());
       setStatus('Running', 'running');
+    } else if (event === 'ask') {
+      sawActivity = true;
+      activityFeed?.push({
+        type: 'status',
+        label: 'In attesa della tua risposta…',
+        detail: data.question?.slice(0, 100) ?? '',
+        status: 'running',
+      });
+      activityByTask.set(id, activityFeed.exportState());
+      void showAgentAskDialog(data).then((ok) => {
+        activityFeed?.push({
+          type: 'status',
+          label: ok ? 'Risposta inviata' : 'Domanda annullata',
+          detail: '',
+          status: ok ? 'done' : 'error',
+        });
+        activityByTask.set(id, activityFeed.exportState());
+      });
     } else if (event === 'done') {
       const empty = data.code === 0 && !sawActivity;
       activityFeed?.finish(data.code, { empty });
@@ -918,6 +1116,8 @@ function bindEvents() {
   els.btnSetupApply?.addEventListener('click', () => void applyWorkspaceFromGate());
   els.btnSetupRecheck?.addEventListener('click', () => void refreshSetup());
 
+  els.btnProgramEdit.addEventListener('click', () => enterProgramEdit());
+  els.btnProgramApply.addEventListener('click', () => applyProgramEdits());
   els.btnCreate.addEventListener('click', () => void previewCreate());
   els.btnSave.addEventListener('click', () => void saveProgram());
   els.btnVerify.addEventListener('click', () => void verifyAcceptance());
@@ -953,6 +1153,11 @@ function bindEvents() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       void saveProgram();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      applyProgramEdits();
     }
   });
 
@@ -1007,6 +1212,16 @@ function bindEvents() {
     }
   });
 
+  els.agentAskForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    void submitAgentAskAnswer();
+  });
+  els.agentAskCancel?.addEventListener('click', () => void cancelAgentAskAnswer());
+  els.agentAskDialog?.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    void cancelAgentAskAnswer();
+  });
+
   els.agentBackend.addEventListener('change', () => {
     void (async () => {
       const backend = els.agentBackend.value;
@@ -1037,6 +1252,7 @@ async function init() {
     onDelete: (id) => void deleteTask(id),
   });
   bindEvents();
+  renderProgramPreview('');
   try {
     connectTasksWatch();
 
@@ -1055,8 +1271,8 @@ async function init() {
       );
     }
 
-    if (els.repoPath.value.trim()) {
-      await bootStep('Sincronizzazione workspace…', () => syncWorkspace(els.repoPath.value));
+    if (getRepoPath()) {
+      await bootStep('Sincronizzazione workspace…', () => syncWorkspace(getRepoPath()));
     }
 
     if (tasks?.tasks?.length === 1) {
@@ -1068,7 +1284,7 @@ async function init() {
     setBootMessage('Pronto');
     await new Promise((resolve) => setTimeout(resolve, 220));
 
-    if (!els.repoPath.value.trim() && els.setupRepoPath) {
+    if (!getRepoPath() && els.setupRepoPath) {
       els.setupRepoPath.focus();
     }
   } catch {
