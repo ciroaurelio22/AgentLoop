@@ -253,8 +253,8 @@ Vague idea → program.md → coding agent → verify → PR → human review �
 | `specs/agent-tasks/*.md` | Task programs |
 | `.agent-loop/` | Queue, scratchpad, kit version, autostart |
 | `scripts/agent/` | CLI: init, next, verify, acceptance, update |
-| `tools/agent-gui/` | Optional web console (Create, Program, AI) |
-| `.cursor/hooks/` | Cursor adapter (inject task, verify on stop, GUI) |
+| `tools/agent-gui/` | Web console (Create, Program, AI); PR status per task via `gh` |
+| `.cursor/hooks/` | Cursor adapter (inject task, verify on stop, **ensure GUI** on session start) |
 | `.cursor/skills/` | `update` and `uninstall` skills |
 | `agent-loop.config.json` | Verify, branches, update check |
 
@@ -277,12 +277,13 @@ flowchart LR
 
 ## Quick start
 
-**Requirements:** Node.js 22+, Git, repo with `lint` / `typecheck` / `test` scripts, at least one agent CLI.
+**Requirements:** Node.js 22+, Git, repo with `lint` / `typecheck` / `test` scripts, at least one agent CLI (installed and authenticated). [**GitHub CLI**](https://cli.github.com/) (`gh`) is optional (PR badges in Agent Console).
 
 | Backend | CLI | Docs |
 | ------- | --- | ---- |
 | Cursor | `agent` | [Cursor CLI](https://cursor.com/docs/cli/overview) |
 | Claude Code | `claude` | [Claude Code setup](https://code.claude.com/docs/en/setup) |
+| GitHub (optional) | `gh` | [GitHub CLI manual](https://cli.github.com/manual/) |
 
 ```bash
 git clone https://github.com/ciroaurelio22/AgentLoop.git
@@ -296,6 +297,12 @@ pnpm agent:next
 ```
 
 Installer flags: `--cursor`, `--claude`, `--gui`, `--all` (default when no adapter flags are passed).
+
+### Agent Console
+
+`pnpm agent:gui` opens the web console at `http://127.0.0.1:9477`. A **setup gate** blocks the UI until workspace, autostart, and the configured agent CLI are ready. Optional `gh` enables PR badges in the sidebar.
+
+With `--cursor` / `--all`, the **`ensure-gui`** hook runs on every Agent **sessionStart**: it checks `http://127.0.0.1:9477/api/state` and starts the server if needed (requires `.agent-loop/autostart`). Manual check: `pnpm agent:gui:ensure`.
 
 ### Core commands
 
@@ -388,6 +395,15 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
      - **Neither installed** → ask which they want to use, share install links ([Cursor CLI](https://cursor.com/docs/cli/overview), [Claude Code](https://code.claude.com/docs/en/setup)), and wait until at least the chosen CLI is installed before continuing
    - Record the choice as `AGENT_BACKEND=cursor` or `AGENT_BACKEND=claude` (document in README/AGENTS.md; optional file `.agent-loop/backend` with a single line `cursor` or `claude`).
 
+0b. **GitHub CLI (`gh`)** (optional, for PR badges in Agent Console):
+   - Run:
+     ```bash
+     gh --version
+     gh auth status
+     ```
+   - If missing and the user wants PR badges: install per OS ([install guide](https://github.com/cli/cli#installation)) and run `gh auth login`.
+   - Do **not** block kit install if `gh` is absent.
+
 1. **Clone the kit** (if not already present) into a **writable temp folder for this OS**; do not hardcode `/tmp`:
    - Resolve a path, e.g. with Node (works everywhere):
      ```bash
@@ -414,12 +430,18 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
      node "<KIT_DIR>/bin/install.mjs" --target . --all
      ```
 
-3. **Enable autostart** (required for Agent Console GUI + session hooks):
+3. **Enable autostart** (required for Agent Console, session hooks, and auto-start GUI):
    ```bash
    node -e "require('node:fs').mkdirSync('.agent-loop',{recursive:true}); require('node:fs').writeFileSync('.agent-loop/autostart','')"
    ```
 
-4. **Detect package manager**: inspect the repo (do not assume pnpm):
+4. **Verify Agent Console** (optional smoke test):
+   ```bash
+   <pm> agent:gui:ensure
+   ```
+   Opens `http://127.0.0.1:9477` if not already running. The Cursor **`ensure-gui`** hook does this automatically on each Agent session when hooks are installed.
+
+5. **Detect package manager**: inspect the repo (do not assume pnpm):
    ```bash
    node scripts/agent/detect-pm.mjs
    ```
@@ -428,40 +450,42 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
    - Map path prefixes to package names in `verify.packages`, or use `"mode": "root"` for single-package repos
    - Set `defaults.baseBranch` to this repo's main branch (`main` or `master`)
 
-5. **Adapt the program template**: edit `specs/agent-tasks/_template.md`:
+6. **Adapt the program template**: edit `specs/agent-tasks/_template.md`:
    - Branch naming (`agent/{{BRANCH_SLUG}}` → PR on correct base branch).
    - Replace example verify commands with this repo's real commands.
 
-6. **Install the chosen CLI** (if step 0 reported it missing):
+7. **Install the chosen CLI** (if step 0 reported it missing):
    - For **Cursor** (`AGENT_BACKEND=cursor`): follow [Cursor CLI docs](https://cursor.com/docs/cli/overview), then `agent login`
    - For **Claude** (`AGENT_BACKEND=claude`): follow [Claude Code setup](https://code.claude.com/docs/en/setup), then authenticate
    - Re-run `agent --version` or `claude --version` and confirm the chosen backend works before smoke tests.
 
-7. **Merge package.json scripts**: confirm these exist:
+8. **Merge package.json scripts**: confirm these exist:
    - `agent:init`, `agent:next`, `agent:verify`, `agent:acceptance`, `agent:status`, `agent:gui`, `agent:gui:ensure`, `agent:update`, `agent:check-update`
 
-8. **Confirm Cursor skills** (installed with `--cursor` / `--all`):
+9. **Confirm Cursor skills** (installed with `--cursor` / `--all`):
    - `.cursor/skills/uninstall/SKILL.md`: remove agent-loop from this repo
    - `.cursor/skills/update/SKILL.md`: pull latest kit from GitHub without losing queue/tasks
 
-9. **Smoke test** (with the backend chosen in step 0; use the package manager from step 4, e.g. `pnpm`, `npm`, `yarn`, or `bun`):
+10. **Smoke test** (with the backend chosen in step 0; use the package manager from step 5, e.g. `pnpm`, `npm`, `yarn`, or `bun`):
    ```bash
    <pm> agent:init TASK-001 "Agent loop smoke test"
    <pm> agent:status
    <pm> agent:next --json
    ```
 
-10. **Document for the team**: add a short "Agent loop" section to README or AGENTS.md with:
+11. **Document for the team**: add a short "Agent loop" section to README or AGENTS.md with:
     - Chosen backend and how to set `AGENT_BACKEND=cursor|claude` (GUI + `run-agent.mjs`)
     - How to create a task (`<pm> agent:init`)
     - How to start the agent (`<pm> agent:next` or GUI)
+    - GitHub CLI (optional): `gh auth login` enables PR badges in Agent Console
 
 ## Constraints
 
 - Do not merge autonomously.
 - Do not hardcode secrets.
 - Do not hardcode `/tmp` or other OS-specific paths; use `os.tmpdir()` or the shell temp variable for this machine.
-- Do not assume `cursor` or `claude`; always detect CLIs in step 0 and ask the user when needed.
+- Do not assume `cursor` or `claude`; detect and configure each in step 0.
+- `gh` is optional; do not block install if it is missing.
 - Keep diffs minimal; only add agent-loop files and config.
 - If `lint` / `typecheck` / `test` scripts are missing at root, document what the user must add.
 
@@ -469,7 +493,7 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
 
 - [ ] Step 0 completed: CLIs detected and user chose `AGENT_BACKEND` (`cursor` or `claude`)
 - [ ] `.agent-loop/`, `scripts/agent/`, `specs/agent-tasks/` exist
-- [ ] `<pm> agent:status` runs without error (package manager from step 4)
+- [ ] `<pm> agent:status` runs without error (package manager from step 5)
 - [ ] `agent-loop.config.json` matches this repo layout
 - [ ] Chosen CLI (`agent` or `claude`) is installed and authenticated
 - [ ] `.cursor/skills/uninstall` and `.cursor/skills/update` exist (Cursor projects)

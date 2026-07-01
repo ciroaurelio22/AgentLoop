@@ -6,7 +6,12 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   repoPath: $('#repo-path'),
   btnSetRepo: $('#btn-set-repo'),
-  autostartGate: $('#autostart-gate'),
+  setupGate: $('#setup-gate'),
+  setupChecklist: $('#setup-checklist'),
+  setupWorkspace: $('#setup-workspace'),
+  setupRepoPath: $('#setup-repo-path'),
+  btnSetupApply: $('#btn-setup-apply'),
+  btnSetupRecheck: $('#btn-setup-recheck'),
   btnEnableAutostart: $('#btn-enable-autostart'),
   taskId: $('#task-id'),
   taskTitle: $('#task-title'),
@@ -198,9 +203,56 @@ async function ensureTaskPersisted() {
   return ensureProgramOnDisk(state.taskId, els.taskTitle.value.trim());
 }
 
-function setAutostart(enabled) {
-  document.body.classList.toggle('autostart-blocked', !enabled);
-  els.autostartGate?.classList.toggle('hidden', enabled);
+function setSetupBlocked(blocked) {
+  document.body.classList.toggle('setup-blocked', blocked);
+  els.setupGate?.classList.toggle('hidden', !blocked);
+}
+
+function renderSetupChecklist(setup) {
+  if (!els.setupChecklist) return;
+
+  els.setupChecklist.innerHTML = (setup.checks ?? [])
+    .map((check) => {
+      const optional = !check.required;
+      const statusClass = check.ok ? 'setup-item--ok' : optional ? 'setup-item--optional-warn' : 'setup-item--fail';
+      const badge = check.ok ? 'OK' : optional ? 'Optional' : 'Required';
+      return `
+        <li class="setup-item ${statusClass}${optional ? ' setup-item--optional' : ''}">
+          <div class="setup-item-head">
+            <span class="setup-item-label">${escapeHtml(check.label)}</span>
+            <span class="setup-item-badge">${badge}</span>
+          </div>
+          <p class="setup-item-detail">${escapeHtml(check.detail ?? '')}</p>
+        </li>`;
+    })
+    .join('');
+
+  const workspaceCheck = setup.checks?.find((c) => c.id === 'workspace');
+  const autostartCheck = setup.checks?.find((c) => c.id === 'autostart');
+  els.setupWorkspace?.classList.toggle('hidden', Boolean(workspaceCheck?.ok));
+  els.btnEnableAutostart?.classList.toggle('hidden', Boolean(autostartCheck?.ok));
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function refreshSetup() {
+  try {
+    const setup = await api('/api/setup');
+    renderSetupChecklist(setup);
+    setSetupBlocked(!setup.ready);
+    if (els.setupRepoPath && !setup.checks?.find((c) => c.id === 'workspace')?.ok) {
+      if (els.repoPath.value.trim()) els.setupRepoPath.value = els.repoPath.value;
+    }
+    return setup;
+  } catch {
+    setSetupBlocked(true);
+    return null;
+  }
 }
 
 function setStatus(_text, _pillState = 'idle') {
@@ -255,7 +307,6 @@ async function loadTaskList() {
     const tasks = await api('/api/tasks');
     lastTaskSnapshot = tasks.tasks ?? [];
     taskSidebar?.render(tasks);
-    setAutostart(Boolean(tasks.autostart));
     return tasks;
   } catch {
     taskSidebar?.render({ tasks: [], autostart: false, noWorkspace: true });
@@ -275,7 +326,6 @@ function connectTasksWatch() {
       const snapshot = JSON.parse(ev.data);
       lastTaskSnapshot = snapshot.tasks ?? [];
       taskSidebar?.render(snapshot);
-      if (typeof snapshot.autostart === 'boolean') setAutostart(snapshot.autostart);
     } catch {
       /* ignore */
     }
@@ -360,7 +410,6 @@ async function refreshState() {
   state.taskId = data.nextTaskId;
   els.taskId.textContent = data.nextTaskId;
   els.cliInfo.textContent = data.model ?? '—';
-  setAutostart(Boolean(data.autostart));
   if (data.agentRunning) {
     setBusy(true);
     setStatus('Running', 'running');
@@ -490,12 +539,32 @@ async function enableAutostart() {
     els.btnEnableAutostart.disabled = true;
     await api('/api/autostart', { method: 'POST', body: '{}' });
     await refreshState();
+    await refreshSetup();
     toast('Autostart enabled', 'success');
   } catch (err) {
     toast(err.message, 'error');
   } finally {
     els.btnEnableAutostart.disabled = false;
   }
+}
+
+async function applyWorkspaceFromGate() {
+  const path = els.setupRepoPath?.value.trim() || els.repoPath.value.trim();
+  if (!path) {
+    toast('Enter workspace path', 'warning');
+    return;
+  }
+  els.repoPath.value = path;
+  const ok = await syncWorkspace(path);
+  if (!ok) {
+    toast('Invalid workspace path', 'error');
+    return;
+  }
+  await refreshState();
+  connectTasksWatch();
+  await loadTaskList();
+  await refreshSetup();
+  toast('Workspace applied', 'success');
 }
 
 async function startAgent({ taskId, title, description }) {
@@ -659,8 +728,12 @@ function bindEvents() {
     await refreshState();
     connectTasksWatch();
     await loadTaskList();
+    await refreshSetup();
     toast('Workspace applied', 'success');
   });
+
+  els.btnSetupApply?.addEventListener('click', () => void applyWorkspaceFromGate());
+  els.btnSetupRecheck?.addEventListener('click', () => void refreshSetup());
 
   els.btnCreate.addEventListener('click', () => void previewCreate());
   els.btnProgramAi.addEventListener('click', () => void createAndDraft());
@@ -735,13 +808,14 @@ async function init() {
     }
     connectTasksWatch();
     const tasks = await loadTaskList();
+    await refreshSetup();
     if (tasks?.tasks?.length === 1) {
       await loadTask(tasks.tasks[0].id);
     } else {
       activityFeed?.showPlaceholder('Select a task from the sidebar');
     }
     if (!els.repoPath.value.trim()) {
-      toast('Set workspace path to begin', 'warning');
+      if (els.setupRepoPath) els.setupRepoPath.focus();
     }
   } catch {
     toast('Cannot reach local server', 'error');

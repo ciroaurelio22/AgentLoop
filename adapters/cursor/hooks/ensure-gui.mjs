@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * sessionStart: ensure Agent Console web UI is running; start it if not.
+ * Requires `.agent-loop/autostart` and `tools/agent-gui/server.mjs`.
+ */
 import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -8,20 +12,19 @@ const input = readHookInput();
 const root = repoRoot();
 process.chdir(root);
 
-const isBackground = input.is_background_agent === true;
-const composerMode = input.composer_mode ?? '';
-
-if (isBackground !== true && process.env.AGENT_LOOP !== '1') {
-  if (!existsSync(join(resolveLoopDir(root), 'autostart'))) {
-    emitEmpty();
-  }
+if ((input.composer_mode ?? '') === 'ask') {
+  emitEmpty();
 }
 
-if (composerMode === 'ask') {
+if (process.env.AGENT_LOOP === '1') {
   emitEmpty();
 }
 
 if (!existsSync(join(root, 'tools', 'agent-gui', 'server.mjs'))) {
+  emitEmpty();
+}
+
+if (!existsSync(join(resolveLoopDir(root), 'autostart'))) {
   emitEmpty();
 }
 
@@ -30,10 +33,10 @@ try {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    timeout: 8000,
+    timeout: 15000,
   });
 } catch {
-  // non-blocking — agent session can continue without GUI
+  // Non-blocking: agent session continues even if GUI fails to start.
 }
 
 emitEmpty();

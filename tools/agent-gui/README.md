@@ -13,15 +13,22 @@ Opens the browser at `http://127.0.0.1:9477`.
 
 ## Layout
 
+- **Setup gate** — blocks the UI until workspace, autostart, and agent CLI are ready (`gh` is optional)
+- **Sidebar** — task queue; status badge + linked PR when `gh` is available
 - **Activity** — last 3 agent actions (read, write, tools, status)
 - **Program** — live-synced editor; updates when the agent modifies the file on disk
 
 ## Requirements
 
 - Node.js 22+
-- Cursor CLI (`agent`) installed and authenticated (`agent login`)
+- Valid Agent Loop workspace (`.agent-loop/`, `specs/agent-tasks/`, `scripts/agent/`)
+- Autostart file (`.agent-loop/autostart`)
+- Cursor CLI (`agent`) or Claude Code CLI (`claude`), installed and authenticated
+- [**GitHub CLI**](https://cli.github.com/) (`gh`, optional): PR badges in the task sidebar
 
-With Cursor hooks installed (`install.mjs --cursor`), the web console starts automatically when you open an **Agent** session (if `.agent-loop/autostart` exists and `tools/agent-gui/` is present).
+On first open, Agent Console shows a **setup gate** until all required checks pass. Optional items (e.g. `gh`) do not block the UI.
+
+With Cursor hooks installed (`install.mjs --cursor`), the **`ensure-gui`** hook on **sessionStart** checks whether Agent Console is up (`/api/state` on port 9477) and starts it if not (requires `.agent-loop/autostart`).
 
 Manual ensure: `pnpm agent:gui:ensure`
 

@@ -115,20 +115,32 @@
       </div>
     </div>
 
-    <div id="autostart-gate" class="autostart-gate hidden" role="dialog" aria-modal="true" aria-labelledby="autostart-gate-title">
-      <div class="autostart-gate-card">
-        <h2 id="autostart-gate-title">Enable autostart</h2>
-        <p class="autostart-gate-lead">
-          Agent Console requires autostart before you can use it.
+    <div id="setup-gate" class="setup-gate hidden" role="dialog" aria-modal="true" aria-labelledby="setup-gate-title">
+      <div class="setup-gate-card">
+        <h2 id="setup-gate-title">Setup required</h2>
+        <p class="setup-gate-lead">
+          Complete the required steps below before using Agent Console.
         </p>
-        <p class="autostart-gate-detail">
-          This creates an empty file at
-          <code>.agent-loop/autostart</code>
-          in your workspace so Cursor can bootstrap the agent loop automatically.
-        </p>
-        <button type="button" id="btn-enable-autostart" class="btn btn--ai btn--gate">
-          Enable autostart
-        </button>
+        <ul id="setup-checklist" class="setup-checklist"></ul>
+        <div id="setup-workspace" class="setup-workspace hidden">
+          <label class="setup-workspace-label" for="setup-repo-path">Workspace path</label>
+          <div class="setup-workspace-row">
+            <input
+              id="setup-repo-path"
+              type="text"
+              class="input input--path"
+              placeholder="D:\path\to\your-repo"
+              spellcheck="false"
+            />
+            <button type="button" id="btn-setup-apply" class="btn btn--secondary">Apply</button>
+          </div>
+        </div>
+        <div class="setup-gate-actions">
+          <button type="button" id="btn-setup-recheck" class="btn btn--secondary">Re-check</button>
+          <button type="button" id="btn-enable-autostart" class="btn btn--ai btn--gate hidden">
+            Enable autostart
+          </button>
+        </div>
       </div>
     </div>
 

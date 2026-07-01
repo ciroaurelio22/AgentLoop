@@ -4,12 +4,19 @@
  *
  * Usage:
  *   node scripts/agent/ensure-gui.mjs          # wait until ready
- *   node scripts/agent/ensure-gui.mjs --hook   # fire-and-forget (Cursor hook)
+ *   node scripts/agent/ensure-gui.mjs --hook   # Cursor sessionStart hook (spawn + short verify)
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  unlinkSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { loopDir } from './lib/paths.mjs';
 
 const DEFAULT_PORT = 9477;
 const hookMode = process.argv.includes('--hook');
@@ -27,7 +34,11 @@ function serverScript(root) {
 }
 
 function pidPath(root) {
-  return join(root, '.agent-loop', 'gui.pid');
+  return join(loopDir(), 'gui.pid');
+}
+
+function spawnLockPath(root) {
+  return join(loopDir(), 'gui.spawn.lock');
 }
 
 function sleep(ms) {
@@ -54,13 +65,76 @@ function isProcessAlive(pid) {
   }
 }
 
-function readStoredPid(root) {
+function readStoredPid() {
   try {
-    const pid = Number(readFileSync(pidPath(root), 'utf8').trim());
+    const pid = Number(readFileSync(pidPath(), 'utf8').trim());
     return Number.isFinite(pid) && pid > 0 ? pid : null;
   } catch {
     return null;
   }
+}
+
+function clearStoredPid() {
+  try {
+    unlinkSync(pidPath());
+  } catch {
+    /* ignore */
+  }
+}
+
+function acquireSpawnLock(maxAgeMs = 15_000) {
+  const lock = spawnLockPath();
+  mkdirSync(loopDir(), { recursive: true });
+  if (existsSync(lock)) {
+    try {
+      const age = Date.now() - Number(readFileSync(lock, 'utf8').trim());
+      if (Number.isFinite(age) && age < maxAgeMs) return false;
+    } catch {
+      /* stale lock */
+    }
+    try {
+      unlinkSync(lock);
+    } catch {
+      /* ignore */
+    }
+  }
+  try {
+    writeFileSync(lock, String(Date.now()), { flag: 'wx' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function releaseSpawnLock() {
+  try {
+    unlinkSync(spawnLockPath());
+  } catch {
+    /* ignore */
+  }
+}
+
+async function stopStaleGui(storedPid, port) {
+  if (!storedPid || !isProcessAlive(storedPid)) {
+    clearStoredPid();
+    return;
+  }
+  if (await isGuiRunning(port)) return;
+
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/F', '/T', '/PID', String(storedPid)], {
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+    } else {
+      process.kill(storedPid, 'SIGTERM');
+    }
+  } catch {
+    /* ignore */
+  }
+  clearStoredPid();
+  await sleep(400);
 }
 
 function spawnGui(root) {
@@ -70,47 +144,74 @@ function spawnGui(root) {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
-    env: { ...process.env, AGENT_GUI_NO_OPEN: '1' },
+    env: { ...process.env, AGENT_GUI_NO_OPEN: hookMode ? '1' : process.env.AGENT_GUI_NO_OPEN ?? '1' },
   });
   child.unref();
 
-  mkdirSync(join(root, '.agent-loop'), { recursive: true });
-  writeFileSync(pidPath(root), String(child.pid), 'utf8');
+  mkdirSync(loopDir(), { recursive: true });
+  writeFileSync(pidPath(), String(child.pid), 'utf8');
   return child.pid;
 }
 
+/**
+ * @param {{ root?: string; hook?: boolean; requireAutostart?: boolean }} [options]
+ */
 export async function ensureGui(options = {}) {
   const root = options.root ?? repoRoot();
+  process.chdir(root);
+
   const port = getPort();
   const script = serverScript(root);
+  const hook = options.hook ?? hookMode;
 
   if (!existsSync(script)) {
     return { ok: true, started: false, reason: 'gui-not-installed' };
+  }
+
+  if (options.requireAutostart !== false) {
+    const autostartPath = join(loopDir(), 'autostart');
+    if (!existsSync(autostartPath)) {
+      return { ok: true, started: false, reason: 'autostart-disabled' };
+    }
   }
 
   if (await isGuiRunning(port)) {
     return { ok: true, started: false, reason: 'already-running', port };
   }
 
-  const storedPid = readStoredPid(root);
-  if (storedPid && isProcessAlive(storedPid) && (await isGuiRunning(port))) {
-    return { ok: true, started: false, reason: 'already-running', port, pid: storedPid };
+  const storedPid = readStoredPid();
+  await stopStaleGui(storedPid, port);
+
+  if (await isGuiRunning(port)) {
+    return { ok: true, started: false, reason: 'already-running', port };
   }
 
-  const pid = spawnGui(root);
-
-  if (hookMode || options.hook) {
-    return { ok: true, started: true, reason: 'spawned', port, pid };
+  if (!acquireSpawnLock()) {
+    for (let i = 0; i < 6; i++) {
+      await sleep(500);
+      if (await isGuiRunning(port)) {
+        return { ok: true, started: false, reason: 'already-running', port };
+      }
+    }
+    return { ok: false, started: false, reason: 'spawn-lock-busy', port };
   }
 
-  for (let i = 0; i < 20; i++) {
+  let pid;
+  try {
+    pid = spawnGui(root);
+  } finally {
+    releaseSpawnLock();
+  }
+
+  const attempts = hook ? 8 : 20;
+  for (let i = 0; i < attempts; i++) {
     await sleep(500);
     if (await isGuiRunning(port)) {
-      return { ok: true, started: true, reason: 'ready', port, pid };
+      return { ok: true, started: true, reason: hook ? 'ready' : 'ready', port, pid };
     }
   }
 
-  return { ok: false, started: true, reason: 'start-timeout', port, pid };
+  return { ok: hook, started: true, reason: hook ? 'spawned' : 'start-timeout', port, pid };
 }
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;

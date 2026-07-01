@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { ProgramWatcher } from './lib/program-watcher.mjs';
 import { QueueWatcher, readTaskSnapshot } from './lib/queue-watcher.mjs';
 import { attachPrStatus, clearPrStatusCache } from './lib/pr-status.mjs';
+import { runSetupChecks } from './lib/setup-check.mjs';
 import { fillTaskTemplate } from './lib/template.mjs';
 import { detectPackageManager } from '../../scripts/agent/lib/package-manager.mjs';
 import {
@@ -58,6 +59,31 @@ setInterval(() => {
   clearPrStatusCache();
   queueWatcher.notify();
 }, 60_000);
+
+function writeGuiPid() {
+  if (!repoRoot) return;
+  const dir = loopDir(repoRoot);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'gui.pid'), String(process.pid), 'utf8');
+}
+
+function removeGuiPid() {
+  if (!repoRoot) return;
+  try {
+    unlinkSync(join(loopDir(repoRoot), 'gui.pid'));
+  } catch {
+    /* ignore */
+  }
+}
+
+function shutdown(signal) {
+  removeGuiPid();
+  process.exit(signal ? 0 : 0);
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('exit', () => removeGuiPid());
 
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -154,6 +180,12 @@ function ensureRepo() {
 }
 
 async function handleApi(req, res, url) {
+  if (req.method === 'GET' && url.pathname === '/api/setup') {
+    ensureRepo();
+    const setup = await runSetupChecks(repoRoot);
+    return sendJson(res, 200, setup);
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/state') {
     ensureRepo();
     return sendJson(res, 200, getState());
@@ -172,6 +204,7 @@ async function handleApi(req, res, url) {
       saveConfig({ ...loadConfig(), last_repo: path });
       clearPrStatusCache();
       queueWatcher.setRepo(repoRoot);
+      writeGuiPid();
       return sendJson(res, 200, getState());
     } catch {
       return sendJson(res, 400, { error: 'Body JSON non valido' });
@@ -396,6 +429,13 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/agent/start') {
+    if (!repoRoot || !isValidRepo(repoRoot)) {
+      return sendJson(res, 400, { error: 'Select a valid workspace' });
+    }
+    const setup = await runSetupChecks(repoRoot);
+    if (!setup.ready) {
+      return sendJson(res, 403, { error: 'Complete setup before starting the agent' });
+    }
     if (activeAgent && activeAgent.exitCode === null) {
       return sendJson(res, 409, { error: 'Agent already running' });
     }
@@ -563,6 +603,7 @@ function main() {
   const port = Number(process.env.AGENT_GUI_PORT) || DEFAULT_PORT;
   const server = createAppServer();
   server.listen(port, '127.0.0.1', () => {
+    writeGuiPid();
     const url = `http://127.0.0.1:${port}`;
     console.log(`Agent Console → ${url}`);
     if (repoRoot) console.log(`Workspace: ${repoRoot}`);
