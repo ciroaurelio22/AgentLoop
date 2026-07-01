@@ -90,5 +90,11 @@ const kitRoot = resolveKitRoot(opts);
 
 const source = opts.fromLocal ? kitRoot : `GitHub (${opts.branch})`;
 console.log(`Updating agent-loop in ${opts.target} from ${source}`);
-run('node', [join(kitRoot, 'bin', 'install.mjs'), '--target', opts.target, '--all', '--force']);
-console.log('\nUpdate complete.');
+run('node', [
+  join(kitRoot, 'bin', 'install.mjs'),
+  '--target',
+  opts.target,
+  '--all',
+  '--force',
+  '--updated',
+]);

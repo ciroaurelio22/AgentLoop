@@ -45,6 +45,7 @@ function parseArgs(argv) {
     claude: false,
     gui: false,
     force: false,
+    updated: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -53,6 +54,7 @@ function parseArgs(argv) {
     else if (a === '--claude') out.claude = true;
     else if (a === '--gui') out.gui = true;
     else if (a === '--force') out.force = true;
+    else if (a === '--updated') out.updated = true;
     else if (a === '--all') {
       out.cursor = true;
       out.claude = true;
@@ -182,6 +184,64 @@ function installGui(targetRoot, force) {
   copyDir(join(KIT_ROOT, 'tools', 'agent-gui'), join(targetRoot, 'tools', 'agent-gui'), { force });
 }
 
+function nextTaskId(targetRoot) {
+  const nums = [];
+  const queuePath = join(targetRoot, '.agent-loop', 'queue.json');
+  if (existsSync(queuePath)) {
+    try {
+      for (const t of JSON.parse(readFileSync(queuePath, 'utf8')).tasks ?? []) {
+        const m = /^TASK-(\d+)$/i.exec(String(t.id ?? '').trim());
+        if (m) nums.push(Number(m[1]));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const tasksDir = join(targetRoot, 'specs', 'agent-tasks');
+  if (existsSync(tasksDir)) {
+    for (const name of readdirSync(tasksDir)) {
+      const m = /^TASK-(\d+)\.md$/i.exec(name);
+      if (m) nums.push(Number(m[1]));
+    }
+  }
+  const n = (nums.length ? Math.max(...nums) : 0) + 1;
+  return `TASK-${String(n).padStart(3, '0')}`;
+}
+
+function hasExistingLoop(targetRoot) {
+  return (
+    existsSync(join(targetRoot, '.agent-loop', 'queue.json')) ||
+    existsSync(join(targetRoot, '.agent-loop', 'autostart'))
+  );
+}
+
+function printDoneMessage(targetRoot, opts, detectedPm) {
+  const pm = detectedPm === 'npm' ? 'npm' : detectedPm;
+  const isUpdate = opts.updated || (opts.force && hasExistingLoop(targetRoot));
+
+  console.log(`\nDetected package manager: ${detectedPm} (verify.packageManager: auto)`);
+
+  if (isUpdate) {
+    console.log('\nUpdate complete. Queue, task programs, and scratchpad were preserved.');
+    console.log('\nNext steps:');
+    console.log(`  1. ${pm} agent:status              # review queue`);
+    console.log(`  2. ${pm} agent:gui:ensure          # ensure Agent Console is running`);
+    console.log(`  3. ${pm} agent:next                # continue pending task (if any)`);
+    console.log('  4. Start a new Cursor Agent session # hooks were refreshed');
+    return;
+  }
+
+  const taskId = nextTaskId(targetRoot);
+  console.log('\nDone. Next steps:');
+  console.log(
+    '  1. node -e "require(\'node:fs\').mkdirSync(\'.agent-loop\',{recursive:true}); require(\'node:fs\').writeFileSync(\'.agent-loop/autostart\',\'\')"',
+  );
+  console.log('  2. Edit agent-loop.config.json   # verify + branch defaults');
+  console.log(`  3. ${pm} agent:init ${taskId} "First task"`);
+  console.log('  4. Install Cursor CLI (agent) or Claude Code CLI (claude) — see README.md');
+  console.log('  5. Cursor skills installed: .cursor/skills/uninstall, .cursor/skills/update');
+}
+
 const opts = parseArgs(process.argv.slice(2));
 const target = opts.target;
 
@@ -192,10 +252,4 @@ if (opts.claude) installClaude(target);
 if (opts.gui) installGui(target, opts.force);
 
 const detectedPm = detectPackageManager(target);
-console.log(`\nDetected package manager: ${detectedPm} (verify.packageManager: auto)`);
-console.log('\nDone. Next steps:');
-console.log('  1. node -e "require(\'node:fs\').mkdirSync(\'.agent-loop\',{recursive:true}); require(\'node:fs\').writeFileSync(\'.agent-loop/autostart\',\'\')"');
-console.log('  2. Edit agent-loop.config.json   # verify + branch defaults');
-console.log('  3. pnpm agent:init TASK-001 "First task"');
-console.log('  4. Install Cursor CLI (agent) or Claude Code CLI (claude) — see README.md');
-console.log('  5. Cursor skills installed: .cursor/skills/uninstall, .cursor/skills/update');
+printDoneMessage(target, opts, detectedPm);
