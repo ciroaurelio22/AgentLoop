@@ -14,7 +14,9 @@
     <script src="/vendor/marked.min.js"></script>
   </head>
   <body class="boot-loading">
-    <div class="layout">
+    <div class="app-frame">
+      <div class="brand-edge brand-edge--left" aria-hidden="true">Agent</div>
+      <div class="layout">
       <aside class="sidebar">
         <div class="sidebar-head">
           <h2 class="sidebar-title">Tasks</h2>
@@ -25,9 +27,6 @@
 
       <div class="main">
         <header class="topbar">
-          <div class="topbar-left">
-            <h1 class="app-title">Agent Console</h1>
-          </div>
           <div class="topbar-workspace">
             <span
               id="repo-path"
@@ -172,6 +171,8 @@
           </div>
         </section>
       </aside>
+      </div>
+      <div class="brand-edge brand-edge--right" aria-hidden="true">Console</div>
     </div>
 
     <div id="setup-gate" class="setup-gate hidden" role="dialog" aria-modal="true" aria-labelledby="setup-gate-title">
