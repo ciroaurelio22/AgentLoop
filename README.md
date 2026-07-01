@@ -34,11 +34,11 @@ Vague idea → program.md → coding agent → PR → human review → merge
 ## Quick install (manual)
 
 ```bash
-git clone https://github.com/SynapseX/AgentLoop.git
+git clone https://github.com/ciroaurelio22/AgentLoop.git
 cd your-project
 
 node /path/to/AgentLoop/bin/install.mjs --target . --all
-touch .agent-loop/autostart
+node -e "require('node:fs').mkdirSync('.agent-loop',{recursive:true}); require('node:fs').writeFileSync('.agent-loop/autostart','')"
 pnpm agent:init TASK-001 "My first task"
 pnpm agent:next
 ```
@@ -130,8 +130,11 @@ node scripts/agent/next-task.mjs             # plain-text prompt
 After `install.mjs --cursor`:
 
 1. Hooks in `.cursor/hooks.json` inject the next task on **Agent** session start.
-2. Create empty file `.agent-loop/autostart` to enable bootstrap in local IDE sessions.
-3. `stop` hook runs verify + enforces acceptance before accepting `DONE` in scratchpad.
+2. **`ensure-gui`** hook starts the web console if it is not already running (`http://127.0.0.1:9477`).
+3. Create empty file `.agent-loop/autostart` to enable bootstrap in local IDE sessions (task injection + GUI).
+4. `stop` hook runs verify + enforces acceptance before accepting `DONE` in scratchpad.
+
+Manual check: `pnpm agent:gui:ensure`
 
 ## Claude Code adapter
 
@@ -174,19 +177,27 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
 
 ## Steps
 
-1. **Clone the kit** (if not already present):
+1. **Clone the kit** (if not already present) into a **writable temp folder for this OS** — do not hardcode `/tmp`:
+   - Resolve a path, e.g. with Node (works everywhere):
+     ```bash
+     node -e "const {join}=require('node:path'); const {tmpdir}=require('node:os'); console.log(join(tmpdir(), 'agent-loop'))"
+     ```
+   - Clone into that folder (replace `<KIT_DIR>` with the printed path):
+     ```bash
+     git clone https://github.com/ciroaurelio22/AgentLoop.git "<KIT_DIR>"
+     ```
+   - Examples if you prefer shell variables:
+     - Linux / macOS: `"$TMPDIR/agent-loop"` or `/tmp/agent-loop`
+     - Windows PowerShell: `"$env:TEMP\agent-loop"`
+
+2. **Run the installer** from the target repo root (forward slashes in the Node path work on Windows too):
    ```bash
-   git clone https://github.com/SynapseX/AgentLoop.git /tmp/agent-loop
+   node "<KIT_DIR>/bin/install.mjs" --target . --all
    ```
 
-2. **Run the installer** from the repo root:
+3. **Enable autostart** (required for Agent Console GUI + session hooks):
    ```bash
-   node /tmp/agent-loop/bin/install.mjs --target . --all
-   ```
-
-3. **Enable autostart** (required for Agent Console GUI):
-   ```bash
-   mkdir -p .agent-loop && touch .agent-loop/autostart
+   node -e "require('node:fs').mkdirSync('.agent-loop',{recursive:true}); require('node:fs').writeFileSync('.agent-loop/autostart','')"
    ```
 
 4. **Configure verify** — create or update `agent-loop.config.json`:
@@ -214,7 +225,7 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
    ```
 
 7. **Merge package.json scripts** — confirm these exist:
-   - `agent:init`, `agent:next`, `agent:verify`, `agent:acceptance`, `agent:status`, `agent:gui`
+   - `agent:init`, `agent:next`, `agent:verify`, `agent:acceptance`, `agent:status`, `agent:gui`, `agent:gui:ensure`
 
 8. **Smoke test**:
    ```bash
@@ -232,6 +243,7 @@ Add a Karpathy-style agent loop: one program file per task, a queue, automatic v
 
 - Do not merge autonomously.
 - Do not hardcode secrets.
+- Do not hardcode `/tmp` or other OS-specific paths — use `os.tmpdir()` or the shell temp variable for this machine.
 - Keep diffs minimal — only add agent-loop files and config.
 - If `lint` / `typecheck` / `test` scripts are missing at root, document what the user must add.
 

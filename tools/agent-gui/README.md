@@ -21,6 +21,10 @@ Opens the browser at `http://127.0.0.1:9477`.
 - Node.js 22+
 - Cursor CLI (`agent`) installed and authenticated (`agent login`)
 
+With Cursor hooks installed (`install.mjs --cursor`), the web console starts automatically when you open an **Agent** session (if `.agent-loop/autostart` exists and `tools/agent-gui/` is present).
+
+Manual ensure: `pnpm agent:gui:ensure`
+
 ## Environment
 
 | Variable | Default | Description |

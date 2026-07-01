@@ -32,6 +32,7 @@ const AGENT_SCRIPTS = {
   'agent:acceptance': 'node scripts/agent/check-acceptance.mjs',
   'agent:done': 'node scripts/agent/done.mjs',
   'agent:gui': 'node tools/agent-gui/server.mjs',
+  'agent:gui:ensure': 'node scripts/agent/ensure-gui.mjs',
 };
 
 function parseArgs(argv) {
@@ -158,7 +159,7 @@ if (opts.claude) installClaude(target);
 if (opts.gui) installGui(target, opts.force);
 
 console.log('\nDone. Next steps:');
-console.log('  1. touch .agent-loop/autostart   # optional bootstrap file');
+console.log('  1. node -e "require(\'node:fs\').mkdirSync(\'.agent-loop\',{recursive:true}); require(\'node:fs\').writeFileSync(\'.agent-loop/autostart\',\'\')"');
 console.log('  2. Edit agent-loop.config.json   # verify + branch defaults');
 console.log('  3. pnpm agent:init TASK-001 "First task"');
 console.log('  4. Install Cursor CLI (agent) or Claude Code CLI (claude) — see README.md');
