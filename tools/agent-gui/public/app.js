@@ -5,7 +5,6 @@ const $ = (sel) => document.querySelector(sel);
 
 const els = {
   repoPath: $('#repo-path'),
-  btnSetRepo: $('#btn-set-repo'),
   setupGate: $('#setup-gate'),
   setupChecklist: $('#setup-checklist'),
   setupWorkspace: $('#setup-workspace'),
@@ -916,21 +915,6 @@ async function draftExisting() {
 }
 
 function bindEvents() {
-  els.btnSetRepo.addEventListener('click', async () => {
-    const path = els.repoPath.value.trim();
-    if (!path) return;
-    const ok = await syncWorkspace(path);
-    if (!ok) {
-      toast('Invalid workspace path', 'error');
-      return;
-    }
-    await refreshState();
-    connectTasksWatch();
-    void loadTaskList();
-    void refreshSetup();
-    toast('Workspace applied', 'success');
-  });
-
   els.btnSetupApply?.addEventListener('click', () => void applyWorkspaceFromGate());
   els.btnSetupRecheck?.addEventListener('click', () => void refreshSetup());
 
