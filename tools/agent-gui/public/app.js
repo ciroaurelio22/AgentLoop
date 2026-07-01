@@ -342,8 +342,25 @@ function parseTaskIdFromEditor() {
   return m ? m[1].toUpperCase() : state.activeProgramId ?? state.taskId;
 }
 
+/** Match server-side program save: LF endings, single trailing newline. */
+function normalizeProgramText(text) {
+  return String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trimEnd();
+}
+
+function programTextsEqual(a, b) {
+  return normalizeProgramText(a) === normalizeProgramText(b);
+}
+
+function canonicalProgramText(text) {
+  const body = normalizeProgramText(text);
+  return body ? `${body}\n` : '';
+}
+
 function markDirty() {
-  state.dirty = els.programEditor.value !== state.diskContent;
+  state.dirty = !programTextsEqual(els.programEditor.value, state.diskContent);
   setSyncBadge(state.dirty ? 'dirty' : 'live');
 }
 
@@ -369,18 +386,22 @@ function enterProgramEdit() {
 }
 
 function applyProgramEdits() {
-  markDirty();
+  const canonical = canonicalProgramText(els.programEditor.value);
+  els.programEditor.value = canonical;
+  state.dirty = !programTextsEqual(canonical, state.diskContent);
+  setSyncBadge(state.dirty ? 'dirty' : 'live');
   setProgramViewMode(false);
 }
 
 function applyProgramContent(program, { fromDisk = false } = {}) {
   if (fromDisk && (state.dirty || state.programEditing)) return false;
-  els.programEditor.value = program;
-  state.diskContent = program;
+  const canonical = canonicalProgramText(program);
+  els.programEditor.value = canonical;
+  state.diskContent = canonical;
   state.dirty = false;
   setSyncBadge('live');
   if (state.programEditing) setProgramViewMode(false);
-  else renderProgramPreview(program);
+  else renderProgramPreview(canonical);
   return true;
 }
 
@@ -869,11 +890,13 @@ async function saveProgram() {
     await ensureTaskPersisted();
   }
   try {
+    const canonical = canonicalProgramText(els.programEditor.value);
     await api(`/api/program/${taskId}`, {
       method: 'PUT',
-      body: JSON.stringify({ program: els.programEditor.value }),
+      body: JSON.stringify({ program: canonical }),
     });
-    state.diskContent = els.programEditor.value;
+    els.programEditor.value = canonical;
+    state.diskContent = canonical;
     state.dirty = false;
     setSyncBadge('live');
     setProgramViewMode(false);

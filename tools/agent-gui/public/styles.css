@@ -212,30 +212,9 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
+  flex: 1;
+  min-width: 0;
 }
-
-.sidebar-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ok);
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: var(--ok-bg);
-  border: 1px solid var(--ok-border);
-}
-.sidebar-live::before {
-  content: '';
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--ok);
-  animation: pulse 2.2s var(--ease) infinite;
-}
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .btn--sidebar-new {
   display: flex;
@@ -741,6 +720,11 @@ body {
   flex-shrink: 0;
   background: var(--text-faint);
 }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 .activity-item--running .activity-dot {
   background: var(--running);
   box-shadow: 0 0 0 3px rgb(37 99 235 / 16%);
